@@ -169,7 +169,7 @@ class SearchableDropdown {
     }
 }
 
-class PromptComparer {
+class PromptManager {
     constructor() {
         this.prompts = [];
         this.userPrompts = [];
@@ -1600,11 +1600,11 @@ Please provide a helpful and well-structured response to the user's request.`
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing PromptComparer...');
+    console.log('DOM loaded, initializing PromptManager...');
     try {
-        window.app = new PromptComparer();
-        console.log('PromptComparer initialized successfully');
+        window.app = new PromptManager();
+        console.log('PromptManager initialized successfully');
     } catch (error) {
-        console.error('Error initializing PromptComparer:', error);
+        console.error('Error initializing PromptManager:', error);
     }
 });
