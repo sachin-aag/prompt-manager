@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1><i class="fas fa-robot"></i> Prompt Comparer</h1>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="nav-section">
+                    <button class="nav-btn active" data-tab="prompts">
+                        <i class="fas fa-file-text"></i>
+                        <span>My Prompts</span>
+                    </button>
+                    <button class="nav-btn" data-tab="comparison">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>Compare LLMs</span>
+                    </button>
+                    <button class="nav-btn" data-tab="system-prompts">
+                        <i class="fas fa-cogs"></i>
+                        <span>System Prompts</span>
+                    </button>
+                    <button class="nav-btn" data-tab="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- My Prompts Tab -->
+            <div class="tab-content active" id="prompts-tab">
+                <div class="content-header">
+                    <h2>My Prompts</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="new-user-prompt-btn">
+                            <i class="fas fa-plus"></i> New Prompt
+                        </button>
+                        <button class="btn btn-secondary" id="import-user-prompts-btn">
+                            <i class="fas fa-upload"></i> Import
+                        </button>
+                        <button class="btn btn-secondary" id="export-user-prompts-btn">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+
+                <div class="user-prompts-grid" id="user-prompts-grid">
+                    <!-- User prompts will be dynamically loaded here -->
+                </div>
+            </div>
+
+            <!-- LLM Comparison Tab -->
+            <div class="tab-content" id="comparison-tab">
+                <div class="content-header">
+                    <h2>LLM Comparison</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="run-comparison-btn">
+                            <i class="fas fa-play"></i> Run Comparison
+                        </button>
+                        <button class="btn btn-secondary" id="clear-comparison-btn">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="comparison-container">
+                    <!-- System Prompt Section -->
+                    <div class="system-prompt-section">
+                        <div class="system-prompt-header">
+                            <h3>System Prompt</h3>
+                            <div class="system-prompt-actions">
+                                <select id="category-select" class="form-control">
+                                    <option value="writing">Writing</option>
+                                    <option value="seo">SEO</option>
+                                    <option value="coding">Coding</option>
+                                    <option value="other">Other</option>
+                                </select>
+                                <button class="btn btn-icon" id="add-system-prompt-btn" title="Add new system prompt">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button class="btn btn-secondary" id="edit-system-prompt-btn">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                            </div>
+                        </div>
+                        <div class="system-prompt-content" id="system-prompt-content">
+                            <!-- System prompt content will be loaded here -->
+                        </div>
+                        <div class="system-prompt-actions">
+                            <button id="toggle-prompt-expansion" class="btn btn-link">
+                                <i class="fas fa-chevron-down"></i> Show more
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Model Comparison Grid -->
+                    <div class="model-comparison-grid">
+                        <!-- Row 1 -->
+                        <div class="model-row">
+                            <div class="model-slot">
+                                <div class="model-header">
+                                    <div class="searchable-dropdown" id="dropdown-1">
+                                        <input type="text" class="dropdown-search" placeholder="Search and select Model 1..." autocomplete="off">
+                                        <div class="dropdown-arrow">▼</div>
+                                        <div class="dropdown-menu" id="menu-1"></div>
+                                    </div>
+                                </div>
+                                <div class="model-output" id="output-1">
+                                    <div class="output-placeholder">Model 1 output will appear here</div>
+                                </div>
+                                <div class="cost-display" id="cost-1" style="display: none;"></div>
+                            </div>
+                            <div class="model-slot">
+                                <div class="model-header">
+                                    <div class="searchable-dropdown" id="dropdown-2">
+                                        <input type="text" class="dropdown-search" placeholder="Search and select Model 2..." autocomplete="off">
+                                        <div class="dropdown-arrow">▼</div>
+                                        <div class="dropdown-menu" id="menu-2"></div>
+                                    </div>
+                                </div>
+                                <div class="model-output" id="output-2">
+                                    <div class="output-placeholder">Model 2 output will appear here</div>
+                                </div>
+                                <div class="cost-display" id="cost-2" style="display: none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Row 2 -->
+                        <div class="model-row">
+                            <div class="model-slot">
+                                <div class="model-header">
+                                    <div class="searchable-dropdown" id="dropdown-3">
+                                        <input type="text" class="dropdown-search" placeholder="Search and select Model 3..." autocomplete="off">
+                                        <div class="dropdown-arrow">▼</div>
+                                        <div class="dropdown-menu" id="menu-3"></div>
+                                    </div>
+                                </div>
+                                <div class="model-output" id="output-3">
+                                    <div class="output-placeholder">Model 3 output will appear here</div>
+                                </div>
+                                <div class="cost-display" id="cost-3" style="display: none;"></div>
+                            </div>
+                            <div class="model-slot">
+                                <div class="model-header">
+                                    <div class="searchable-dropdown" id="dropdown-4">
+                                        <input type="text" class="dropdown-search" placeholder="Search and select Model 4..." autocomplete="off">
+                                        <div class="dropdown-arrow">▼</div>
+                                        <div class="dropdown-menu" id="menu-4"></div>
+                                    </div>
+                                </div>
+                                <div class="model-output" id="output-4">
+                                    <div class="output-placeholder">Model 4 output will appear here</div>
+                                </div>
+                                <div class="cost-display" id="cost-4" style="display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Input Section -->
+                    <div class="user-input-section">
+                        <div class="input-group">
+                            <label for="user-message">Enter your prompt:</label>
+                            <textarea id="user-message" class="form-control" rows="3" 
+                                placeholder="Enter your message to send to the selected models..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Prompts Management Tab -->
+            <div class="tab-content" id="system-prompts-tab">
+                <div class="content-header">
+                    <h2>System Prompts Management</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="new-prompt-btn">
+                            <i class="fas fa-plus"></i> New Prompt
+                        </button>
+                        <button class="btn btn-secondary" id="import-btn">
+                            <i class="fas fa-upload"></i> Import
+                        </button>
+                        <button class="btn btn-secondary" id="export-btn">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+
+                <div class="prompts-grid" id="prompts-grid">
+                    <!-- System prompts will be dynamically loaded here -->
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settings-tab">
+                <div class="content-header">
+                    <h2>Settings</h2>
+                </div>
+
+                <div class="settings-content">
+                    <div class="setting-group">
+                        <h3>OpenRouter API</h3>
+                        <div class="input-group">
+                            <label for="api-key">API Key:</label>
+                            <input type="password" id="api-key" class="form-control" 
+                                placeholder="Enter your OpenRouter API key...">
+                        </div>
+                        <button class="btn btn-primary" id="save-api-key">Save API Key</button>
+                    </div>
+
+                    <div class="setting-group">
+                        <h3>Available Models</h3>
+                        <div style="margin-bottom: 16px;">
+                            <button class="btn btn-secondary" id="refresh-models-btn">
+                                <i class="fas fa-sync-alt"></i> Refresh Models
+                            </button>
+                        </div>
+                        <div class="models-list" id="models-list">
+                            <p>Configure your API key to see available models</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prompt Editor Modal -->
+    <div class="modal" id="prompt-editor-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">New Prompt</h3>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="prompt-title">Title:</label>
+                    <input type="text" id="prompt-title" class="form-control" placeholder="Enter prompt title...">
+                </div>
+                
+                <div class="input-group">
+                    <label for="prompt-category">Category:</label>
+                    <select id="prompt-category" class="form-control">
+                        <option value="seo">SEO</option>
+                        <option value="writing">Writing</option>
+                        <option value="coding">Coding</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="prompt-content">Content:</label>
+                    <textarea id="prompt-content" class="form-control" rows="12" 
+                        placeholder="Enter your system prompt..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-prompt">Cancel</button>
+                <button class="btn btn-primary" id="save-prompt">Save Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Prompt Editor Modal -->
+    <div class="modal" id="system-prompt-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit System Prompt</h3>
+                <button class="close-btn" id="close-system-prompt-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="system-prompt-textarea">System Prompt for <span id="modal-category-name">Writing</span>:</label>
+                    <textarea id="system-prompt-textarea" class="form-control" rows="12" 
+                        placeholder="Enter your system prompt here..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-system-prompt">Cancel</button>
+                <button class="btn btn-primary" id="save-system-prompt">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Prompt Editor Modal -->
+    <div class="modal" id="user-prompt-editor-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="user-modal-title">New User Prompt</h3>
+                <button class="close-btn" id="close-user-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="user-prompt-title">Title:</label>
+                    <input type="text" id="user-prompt-title" class="form-control" placeholder="Enter prompt title...">
+                </div>
+                
+                <div class="input-group">
+                    <label for="user-prompt-category">Category:</label>
+                    <select id="user-prompt-category" class="form-control">
+                        <option value="seo">SEO</option>
+                        <option value="writing">Writing</option>
+                        <option value="coding">Coding</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="user-prompt-content">Content:</label>
+                    <textarea id="user-prompt-content" class="form-control" rows="8" 
+                        placeholder="Enter your user prompt..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-user-prompt">Cancel</button>
+                <button class="btn btn-primary" id="save-user-prompt">Save Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add System Prompt Modal -->
+    <div class="modal" id="add-system-prompt-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New System Prompt</h3>
+                <button class="close-btn" id="close-add-system-prompt-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="new-system-prompt-category">Category Name:</label>
+                    <input type="text" id="new-system-prompt-category" class="form-control" 
+                        placeholder="Enter category name (e.g., Marketing, Research, etc.)">
+                </div>
+                
+                <div class="input-group">
+                    <label for="new-system-prompt-content">System Prompt:</label>
+                    <textarea id="new-system-prompt-content" class="form-control" rows="12" 
+                        placeholder="Enter your system prompt content..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-add-system-prompt">Cancel</button>
+                <button class="btn btn-primary" id="save-add-system-prompt">Add Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
