@@ -610,9 +610,31 @@ body {
     font-size: 13px;
     line-height: 1.5;
     white-space: pre-wrap;
+    word-wrap: break-word;
+    height: 480px; /* 20 lines * 1.5 line-height * 16px font-size = ~480px */
     overflow-y: auto;
-    min-height: 300px;
     position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: #666 #333;
+}
+
+/* Custom scrollbar for webkit browsers */
+.model-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.model-output::-webkit-scrollbar-track {
+    background: #333;
+    border-radius: 4px;
+}
+
+.model-output::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 4px;
+}
+
+.model-output::-webkit-scrollbar-thumb:hover {
+    background: #888;
 }
 
 
@@ -620,7 +642,11 @@ body {
     color: #666;
     font-style: italic;
     text-align: center;
-    padding: 40px 20px;
+    padding: 200px 20px; /* Center vertically in the fixed height box */
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .model-output.loading {

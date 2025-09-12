@@ -184,20 +184,8 @@ class PromptManager {
         this.currentSessionId = null;
         this.internetAccessProvider = 'none';
         
-        // Simple pricing data for common models (per 1M tokens)
-        this.modelPricing = {
-            'gpt-4': { input: 30.0, output: 60.0 },
-            'gpt-4-turbo': { input: 10.0, output: 30.0 },
-            'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-            'claude-3-opus': { input: 15.0, output: 75.0 },
-            'claude-3-sonnet': { input: 3.0, output: 15.0 },
-            'claude-3-haiku': { input: 0.25, output: 1.25 },
-            'llama-2-70b': { input: 0.7, output: 0.9 },
-            'llama-2-13b': { input: 0.2, output: 0.2 },
-            'llama-2-7b': { input: 0.1, output: 0.1 },
-            'gemini-pro': { input: 0.5, output: 1.5 },
-            'gemini-pro-vision': { input: 0.5, output: 1.5 }
-        };
+        // Store generation IDs for cost lookup
+        this.generationIds = new Map(); // slotNumber -> generationId
         
         this.defaultPrompts = {
             writing: `You are an expert writer and editor. Your role is to help create high-quality, engaging, and well-structured content. 
@@ -389,18 +377,18 @@ Always aim to be the most helpful and informative assistant possible while maint
             this.exportPrompts();
         });
 
-        // User prompt management
-        this.safeAddEventListener('new-user-prompt-btn', 'click', () => {
-            this.openUserPromptEditor();
-        });
+        // User prompt management (buttons not currently in UI)
+        // this.safeAddEventListener('new-user-prompt-btn', 'click', () => {
+        //     this.openUserPromptEditor();
+        // });
 
-        this.safeAddEventListener('import-user-prompts-btn', 'click', () => {
-            this.importUserPrompts();
-        });
+        // this.safeAddEventListener('import-user-prompts-btn', 'click', () => {
+        //     this.importUserPrompts();
+        // });
 
-        this.safeAddEventListener('export-user-prompts-btn', 'click', () => {
-            this.exportUserPrompts();
-        });
+        // this.safeAddEventListener('export-user-prompts-btn', 'click', () => {
+        //     this.exportUserPrompts();
+        // });
 
         // Modal controls
         document.getElementById('close-modal').addEventListener('click', () => {
@@ -1165,6 +1153,19 @@ Always aim to be the most helpful and informative assistant possible while maint
             await this.callLLM(model.id, model.name, systemPrompt, userMessage + internetContext, model.slot);
         }
 
+        // Wait a bit for OpenRouter to process the generation data
+        console.log('All LLM responses complete. Waiting 10 seconds before fetching cost data...');
+        
+        // Show cost loading indicator with countdown
+        this.showCostLoadingIndicator(selectedModels);
+        await this.countdownDelay(10000, selectedModels);
+
+        // Now fetch cost information for all completed generations
+        await this.batchFetchCostData(selectedModels);
+        
+        // Hide cost loading indicator
+        this.hideCostLoadingIndicator(selectedModels);
+
         // Save prompt session after all API calls are complete
         this.savePromptSessionAfterComparison(systemPrompt, userMessage, selectedModels);
     }
@@ -1253,10 +1254,32 @@ Always aim to be the most helpful and informative assistant possible while maint
             const content = response.data.choices[0].message.content;
             console.log(`Received response from ${modelName}, length: ${content.length}`);
             
-            // Calculate output tokens and cost
-            const outputTokens = this.estimateTokens(content);
-            const costInfo = this.calculateCost(modelId, inputTokens, outputTokens);
+            // Store generation ID for cost lookup
+            const generationId = response.data.id;
+            if (generationId) {
+                this.generationIds.set(slotNumber, generationId);
+                console.log(`Stored generation ID for slot ${slotNumber}: ${generationId}`);
+            }
             
+            // Try to get cost information - first from response usage, then from generation API
+            let costInfo = null;
+            
+            // First, try to use usage data from the response if available
+            if (response.data.usage) {
+                const usage = response.data.usage;
+                costInfo = {
+                    inputTokens: usage.prompt_tokens || 0,
+                    outputTokens: usage.completion_tokens || 0,
+                    totalTokens: usage.total_tokens || 0,
+                    // Note: We don't have cost from the response, so we'll show token counts
+                    totalCost: 0, // Will be updated by generation API if available
+                    inputCost: 0,
+                    outputCost: 0
+                };
+                console.log('Using usage data from response:', costInfo);
+            }
+            
+            // Update the output with initial cost info (tokens only)
             this.updateModelOutput(slotNumber, content, costInfo);
         } catch (error) {
             console.error(`Error calling ${modelName}:`, error);
@@ -1304,11 +1327,140 @@ Always aim to be the most helpful and informative assistant possible while maint
         
         // Show or hide cost display below the textbox
         if (costInfo) {
-            const costText = `$${costInfo.totalCost.toFixed(6)} (${costInfo.inputTokens}→${costInfo.outputTokens} tokens)`;
+            let costText;
+            if (costInfo.totalCost > 0) {
+                // We have actual cost information
+                costText = `$${costInfo.totalCost.toFixed(6)} (${costInfo.inputTokens}→${costInfo.outputTokens} tokens)`;
+                
+                // Add additional info if available
+                if (costInfo.latency) {
+                    costText += ` [${costInfo.latency}ms]`;
+                }
+                if (costInfo.finishReason) {
+                    costText += ` [${costInfo.finishReason}]`;
+                }
+            } else {
+                // We only have token counts, no cost info yet
+                costText = `${costInfo.inputTokens}→${costInfo.outputTokens} tokens (cost loading...)`;
+            }
             costDisplay.textContent = costText;
             costDisplay.style.display = 'block';
         } else {
             costDisplay.style.display = 'none';
+        }
+    }
+
+    // Countdown delay with visual feedback
+    async countdownDelay(delayMs, selectedModels) {
+        const totalSeconds = Math.ceil(delayMs / 1000);
+        
+        for (let i = totalSeconds; i > 0; i--) {
+            selectedModels.forEach(model => {
+                const costDisplay = document.getElementById(`cost-${model.slot}`);
+                if (costDisplay) {
+                    const currentText = costDisplay.textContent;
+                    if (currentText && currentText.includes('(cost loading...)')) {
+                        costDisplay.textContent = currentText.replace('(cost loading...)', `(waiting ${i}s...)`);
+                    }
+                }
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+
+    // Show cost loading indicator for selected models
+    showCostLoadingIndicator(selectedModels) {
+        selectedModels.forEach(model => {
+            const costDisplay = document.getElementById(`cost-${model.slot}`);
+            if (costDisplay) {
+                const currentText = costDisplay.textContent;
+                if (currentText && !currentText.includes('fetching cost')) {
+                    costDisplay.textContent = currentText.replace('(cost loading...)', '(fetching cost...)');
+                }
+            }
+        });
+    }
+
+    // Hide cost loading indicator for selected models
+    hideCostLoadingIndicator(selectedModels) {
+        selectedModels.forEach(model => {
+            const costDisplay = document.getElementById(`cost-${model.slot}`);
+            if (costDisplay) {
+                const currentText = costDisplay.textContent;
+                if (currentText && currentText.includes('fetching cost')) {
+                    costDisplay.textContent = currentText.replace('(fetching cost...)', '(cost loading...)');
+                }
+            }
+        });
+    }
+
+    // Batch fetch cost data for all completed generations
+    async batchFetchCostData(selectedModels) {
+        console.log('Starting batch cost data fetch...');
+        
+        // Get all generation IDs that we have
+        const costPromises = [];
+        
+        for (const model of selectedModels) {
+            const generationId = this.generationIds.get(model.slot);
+            if (generationId) {
+                console.log(`Queuing cost lookup for slot ${model.slot} (${model.name}): ${generationId}`);
+                costPromises.push(
+                    this.getGenerationCostWithRetry(generationId, 8, 5000) // 8 retries, 5 second delay
+                        .then(detailedCostInfo => {
+                            if (detailedCostInfo) {
+                                console.log(`Cost data received for slot ${model.slot}:`, detailedCostInfo);
+                                this.updateCostDisplay(model.slot, detailedCostInfo);
+                                return { slot: model.slot, costInfo: detailedCostInfo };
+                            }
+                            return null;
+                        })
+                        .catch(error => {
+                            console.error(`Failed to get cost data for slot ${model.slot}:`, error);
+                            return null;
+                        })
+                );
+            } else {
+                console.warn(`No generation ID found for slot ${model.slot} (${model.name})`);
+            }
+        }
+        
+        if (costPromises.length > 0) {
+            console.log(`Waiting for ${costPromises.length} cost lookups to complete...`);
+            const results = await Promise.allSettled(costPromises);
+            
+            const successful = results.filter(result => 
+                result.status === 'fulfilled' && result.value !== null
+            ).length;
+            
+            console.log(`Cost data fetch complete: ${successful}/${costPromises.length} successful`);
+        } else {
+            console.log('No generation IDs available for cost lookup');
+        }
+    }
+
+    // Update only the cost display for a specific slot
+    updateCostDisplay(slotNumber, costInfo) {
+        const costDisplay = document.getElementById(`cost-${slotNumber}`);
+        if (!costDisplay) {
+            console.error(`Cost display element not found for slot ${slotNumber}`);
+            return;
+        }
+
+        if (costInfo && costInfo.totalCost > 0) {
+            let costText = `$${costInfo.totalCost.toFixed(6)} (${costInfo.inputTokens}→${costInfo.outputTokens} tokens)`;
+            
+            // Add additional info if available
+            if (costInfo.latency) {
+                costText += ` [${costInfo.latency}ms]`;
+            }
+            if (costInfo.finishReason) {
+                costText += ` [${costInfo.finishReason}]`;
+            }
+            
+            costDisplay.textContent = costText;
+            costDisplay.style.display = 'block';
         }
     }
 
@@ -1827,55 +1979,82 @@ Please provide a helpful and well-structured response to the user's request.`
         return Math.ceil(text.length / 4);
     }
 
-    // Calculate cost based on model and token usage
-    calculateCost(modelId, inputTokens, outputTokens) {
-        // Try to find pricing for the model
-        let pricing = null;
-        
-        // Check for exact match first
-        if (this.modelPricing[modelId]) {
-            pricing = this.modelPricing[modelId];
-        } else {
-            // Try to match by model name patterns
-            const modelName = modelId.toLowerCase();
-            if (modelName.includes('gpt-4')) {
-                pricing = modelName.includes('turbo') ? this.modelPricing['gpt-4-turbo'] : this.modelPricing['gpt-4'];
-            } else if (modelName.includes('gpt-3.5')) {
-                pricing = this.modelPricing['gpt-3.5-turbo'];
-            } else if (modelName.includes('claude-3-opus')) {
-                pricing = this.modelPricing['claude-3-opus'];
-            } else if (modelName.includes('claude-3-sonnet')) {
-                pricing = this.modelPricing['claude-3-sonnet'];
-            } else if (modelName.includes('claude-3-haiku')) {
-                pricing = this.modelPricing['claude-3-haiku'];
-            } else if (modelName.includes('llama-2-70b')) {
-                pricing = this.modelPricing['llama-2-70b'];
-            } else if (modelName.includes('llama-2-13b')) {
-                pricing = this.modelPricing['llama-2-13b'];
-            } else if (modelName.includes('llama-2-7b')) {
-                pricing = this.modelPricing['llama-2-7b'];
-            } else if (modelName.includes('gemini-pro')) {
-                pricing = this.modelPricing['gemini-pro'];
+    // Get accurate cost information from OpenRouter Generation API with retry
+    async getGenerationCostWithRetry(generationId, maxRetries = 8, delayMs = 5000) {
+        if (!generationId) {
+            console.warn('No generation ID provided for cost lookup');
+            return null;
+        }
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`Fetching cost info for generation: ${generationId} (attempt ${attempt}/${maxRetries})`);
+                console.log(`API URL: https://openrouter.ai/api/v1/generation?id=${generationId}`);
+                
+                const response = await axios.get(`https://openrouter.ai/api/v1/generation?id=${generationId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 15000 // 15 second timeout
+                });
+
+                const generationData = response.data;
+                console.log(`Generation data for ${generationId}:`, generationData);
+                console.log(`Response status: ${response.status}`);
+
+                // Extract cost and token information from OpenRouter Generation API structure
+                if (generationData.data) {
+                    const data = generationData.data;
+                    const inputTokens = data.tokens_prompt || 0;
+                    const outputTokens = data.tokens_completion || 0;
+                    const totalTokens = inputTokens + outputTokens;
+                    const totalCost = data.total_cost || 0;
+                    const usage = data.usage || 0; // Additional usage field
+                    
+                    console.log(`Parsed data: input=${inputTokens}, output=${outputTokens}, total=${totalTokens}, cost=${totalCost}, usage=${usage}`);
+                    console.log(`Model: ${data.model}, Created: ${data.created_at}`);
+                    
+                    return {
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        totalTokens: totalTokens,
+                        totalCost: totalCost,
+                        usage: usage, // Additional usage information
+                        inputCost: totalCost > 0 && totalTokens > 0 ? (totalCost * (inputTokens / totalTokens)) : 0,
+                        outputCost: totalCost > 0 && totalTokens > 0 ? (totalCost * (outputTokens / totalTokens)) : 0,
+                        // Additional metadata
+                        model: data.model,
+                        createdAt: data.created_at,
+                        latency: data.latency,
+                        finishReason: data.finish_reason
+                    };
+                } else {
+                    console.warn('No data object found in generation response');
+                    console.log('Available fields:', Object.keys(generationData));
+                    return null;
+                }
+            } catch (error) {
+                console.error(`Error fetching generation cost (attempt ${attempt}/${maxRetries}):`, error);
+                console.error(`Error details:`, {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data,
+                    message: error.message
+                });
+                
+                if (attempt === maxRetries) {
+                    console.warn(`Max retries reached for generation ${generationId}, giving up on cost lookup`);
+                    return null;
+                }
+                
+                // Wait before retrying
+                console.log(`Waiting ${delayMs}ms before retry ${attempt + 1}...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
             }
         }
-
-        if (!pricing) {
-            // Default pricing for unknown models (conservative estimate)
-            pricing = { input: 1.0, output: 2.0 };
-        }
-
-        // Calculate cost (pricing is per 1M tokens)
-        const inputCost = (inputTokens / 1000000) * pricing.input;
-        const outputCost = (outputTokens / 1000000) * pricing.output;
-        const totalCost = inputCost + outputCost;
-
-        return {
-            inputCost,
-            outputCost,
-            totalCost,
-            inputTokens,
-            outputTokens
-        };
+        
+        return null;
     }
 
     // Prompt Session Management
