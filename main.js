@@ -149,3 +149,63 @@ ipcMain.handle('load-user-prompts', async () => {
     return { success: false, error: error.message };
   }
 });
+
+// IPC handlers for prompt sessions (prompts with responses)
+ipcMain.handle('save-prompt-session', async (event, sessionData) => {
+  try {
+    const dataPath = path.join(__dirname, 'data');
+    if (!fs.existsSync(dataPath)) {
+      fs.mkdirSync(dataPath, { recursive: true });
+    }
+    
+    const filePath = path.join(dataPath, 'prompt-sessions.json');
+    let sessions = [];
+    
+    // Load existing sessions
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      sessions = JSON.parse(data);
+    }
+    
+    // Add new session
+    sessions.push(sessionData);
+    
+    // Save updated sessions
+    fs.writeFileSync(filePath, JSON.stringify(sessions, null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-prompt-sessions', async () => {
+  try {
+    const filePath = path.join(__dirname, 'data', 'prompt-sessions.json');
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      return { success: true, data: JSON.parse(data) };
+    }
+    return { success: true, data: [] };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-prompt-session', async (event, sessionId) => {
+  try {
+    const filePath = path.join(__dirname, 'data', 'prompt-sessions.json');
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      let sessions = JSON.parse(data);
+      
+      // Remove session with matching ID
+      sessions = sessions.filter(session => session.id !== sessionId);
+      
+      fs.writeFileSync(filePath, JSON.stringify(sessions, null, 2));
+      return { success: true };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});

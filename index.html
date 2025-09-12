@@ -43,23 +43,19 @@
         <div class="main-content">
             <!-- My Prompts Tab -->
             <div class="tab-content active" id="prompts-tab">
-                <div class="content-header">
-                    <h2>My Prompts</h2>
-                    <div class="header-actions">
-                        <button class="btn btn-primary" id="new-user-prompt-btn">
-                            <i class="fas fa-plus"></i> New Prompt
-                        </button>
-                        <button class="btn btn-secondary" id="import-user-prompts-btn">
-                            <i class="fas fa-upload"></i> Import
-                        </button>
-                        <button class="btn btn-secondary" id="export-user-prompts-btn">
-                            <i class="fas fa-download"></i> Export
-                        </button>
+                <!-- Previous Prompts Section -->
+                <div class="previous-prompts-section">
+                    <div class="section-header">
+                        <h3>Previous Prompts & Responses</h3>
+                        <div class="search-container">
+                            <input type="text" id="prompt-history-search" placeholder="Search prompts and responses..." class="search-input">
+                            <i class="fas fa-search search-icon"></i>
+                        </div>
                     </div>
-                </div>
-
-                <div class="user-prompts-grid" id="user-prompts-grid">
-                    <!-- User prompts will be dynamically loaded here -->
+                    
+                    <div class="prompt-history-list" id="prompt-history-list">
+                        <!-- Previous prompts will be loaded here -->
+                    </div>
                 </div>
             </div>
 
@@ -104,6 +100,22 @@
                             <button id="toggle-prompt-expansion" class="btn btn-link">
                                 <i class="fas fa-chevron-down"></i> Show more
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Internet Access Section -->
+                    <div class="internet-access-section">
+                        <div class="internet-access-header">
+                            <h3>Internet Access</h3>
+                        </div>
+                        <div class="internet-access-content">
+                            <div class="input-group">
+                                <label for="internet-access-select">Search Provider:</label>
+                                <select id="internet-access-select" class="form-control">
+                                    <option value="none">None</option>
+                                    <option value="tavily">Tavily</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -210,25 +222,41 @@
                 </div>
 
                 <div class="settings-content">
-                    <div class="setting-group">
-                        <h3>OpenRouter API</h3>
-                        <div class="input-group">
-                            <label for="api-key">API Key:</label>
-                            <input type="password" id="api-key" class="form-control" 
-                                placeholder="Enter your OpenRouter API key...">
-                        </div>
-                        <button class="btn btn-primary" id="save-api-key">Save API Key</button>
-                    </div>
+                    <div class="settings-grid">
+                        <div class="settings-left-column">
+                            <div class="setting-group">
+                                <h3>OpenRouter API</h3>
+                                <div class="input-group">
+                                    <label for="api-key">API Key:</label>
+                                    <input type="password" id="api-key" class="form-control" 
+                                        placeholder="Enter your OpenRouter API key...">
+                                </div>
+                                <button class="btn btn-primary" id="save-api-key">Save API Key</button>
+                            </div>
 
-                    <div class="setting-group">
-                        <h3>Available Models</h3>
-                        <div style="margin-bottom: 16px;">
-                            <button class="btn btn-secondary" id="refresh-models-btn">
-                                <i class="fas fa-sync-alt"></i> Refresh Models
-                            </button>
+                            <div class="setting-group">
+                                <h3>Tavily API</h3>
+                                <div class="input-group">
+                                    <label for="tavily-api-key">API Key:</label>
+                                    <input type="password" id="tavily-api-key" class="form-control" 
+                                        placeholder="Enter your Tavily API key...">
+                                </div>
+                                <button class="btn btn-primary" id="save-tavily-api-key">Save Tavily API Key</button>
+                            </div>
                         </div>
-                        <div class="models-list" id="models-list">
-                            <p>Configure your API key to see available models</p>
+
+                        <div class="settings-right-column">
+                            <div class="setting-group">
+                                <h3>Available Models</h3>
+                                <div style="margin-bottom: 16px;">
+                                    <button class="btn btn-secondary" id="refresh-models-btn">
+                                        <i class="fas fa-sync-alt"></i> Refresh Models
+                                    </button>
+                                </div>
+                                <div class="models-list" id="models-list">
+                                    <p>Configure your API key to see available models</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -352,6 +380,45 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancel-add-system-prompt">Cancel</button>
                 <button class="btn btn-primary" id="save-add-system-prompt">Add Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prompt Session Detail Modal -->
+    <div class="modal" id="prompt-session-modal">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h3>Prompt Session Details</h3>
+                <button class="close-btn" id="close-prompt-session-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="session-info">
+                    <div class="session-meta">
+                        <span class="session-date" id="session-date"></span>
+                        <span class="session-models" id="session-models"></span>
+                    </div>
+                </div>
+                
+                <div class="session-content">
+                    <div class="prompt-section">
+                        <h4>System Prompt</h4>
+                        <div class="prompt-content" id="session-system-prompt"></div>
+                    </div>
+                    
+                    <div class="prompt-section">
+                        <h4>User Prompt</h4>
+                        <div class="prompt-content" id="session-user-prompt"></div>
+                    </div>
+                    
+                    <div class="responses-section">
+                        <h4>Model Responses</h4>
+                        <div class="responses-container" id="session-responses"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" id="delete-session-btn">Delete Session</button>
+                <button class="btn btn-secondary" id="close-session-modal">Close</button>
             </div>
         </div>
     </div>

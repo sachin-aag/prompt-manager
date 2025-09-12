@@ -173,12 +173,16 @@ class PromptManager {
     constructor() {
         this.prompts = [];
         this.userPrompts = [];
+        this.promptSessions = [];
         this.currentCategory = 'writing';
         this.editingPromptId = null;
         this.editingUserPromptId = null;
         this.apiKey = localStorage.getItem('openrouter_api_key') || '';
+        this.tavilyApiKey = localStorage.getItem('tavily_api_key') || '';
         this.availableModels = [];
         this.modelDropdowns = [];
+        this.currentSessionId = null;
+        this.internetAccessProvider = 'none';
         
         // Simple pricing data for common models (per 1M tokens)
         this.modelPricing = {
@@ -194,6 +198,7 @@ class PromptManager {
             'gemini-pro': { input: 0.5, output: 1.5 },
             'gemini-pro-vision': { input: 0.5, output: 1.5 }
         };
+        
         this.defaultPrompts = {
             writing: `You are an expert writer and editor. Your role is to help create high-quality, engaging, and well-structured content. 
 
@@ -275,6 +280,16 @@ Always aim to be the most helpful and informative assistant possible while maint
         this.init();
     }
 
+    // Helper function to safely add event listeners
+    safeAddEventListener(elementId, event, handler) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.addEventListener(event, handler);
+        } else {
+            console.warn(`Element with id '${elementId}' not found, skipping event listener`);
+        }
+    }
+
     async init() {
         this.setupEventListeners();
         this.initializeModelDropdowns();
@@ -282,6 +297,7 @@ Always aim to be the most helpful and informative assistant possible while maint
         await this.loadPrompts();
         await this.loadUserPrompts();
         await this.loadAvailableModels();
+        this.initPromptHistory(); // Initialize prompt history functionality
         this.updateUI();
     }
 
@@ -361,28 +377,28 @@ Always aim to be the most helpful and informative assistant possible while maint
         });
 
         // Prompt management
-        document.getElementById('new-prompt-btn').addEventListener('click', () => {
+        this.safeAddEventListener('new-prompt-btn', 'click', () => {
             this.openPromptEditor();
         });
 
-        document.getElementById('import-btn').addEventListener('click', () => {
+        this.safeAddEventListener('import-btn', 'click', () => {
             this.importPrompts();
         });
 
-        document.getElementById('export-btn').addEventListener('click', () => {
+        this.safeAddEventListener('export-btn', 'click', () => {
             this.exportPrompts();
         });
 
         // User prompt management
-        document.getElementById('new-user-prompt-btn').addEventListener('click', () => {
+        this.safeAddEventListener('new-user-prompt-btn', 'click', () => {
             this.openUserPromptEditor();
         });
 
-        document.getElementById('import-user-prompts-btn').addEventListener('click', () => {
+        this.safeAddEventListener('import-user-prompts-btn', 'click', () => {
             this.importUserPrompts();
         });
 
-        document.getElementById('export-user-prompts-btn').addEventListener('click', () => {
+        this.safeAddEventListener('export-user-prompts-btn', 'click', () => {
             this.exportUserPrompts();
         });
 
@@ -424,6 +440,15 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Settings
         document.getElementById('save-api-key').addEventListener('click', () => {
             this.saveApiKey();
+        });
+
+        document.getElementById('save-tavily-api-key').addEventListener('click', () => {
+            this.saveTavilyApiKey();
+        });
+
+        // Internet access dropdown
+        document.getElementById('internet-access-select').addEventListener('change', (e) => {
+            this.internetAccessProvider = e.target.value;
         });
 
         // Add refresh models button if it exists
@@ -494,6 +519,11 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Update user prompts grid if switching to prompts tab
         if (tabName === 'prompts') {
             this.updateUserPromptsGrid();
+        }
+        
+        // Update system prompts grid if switching to system-prompts tab
+        if (tabName === 'system-prompts') {
+            this.updateSystemPromptsGrid();
         }
     }
 
@@ -625,6 +655,58 @@ Always aim to be the most helpful and informative assistant possible while maint
                     </div>
                 </div>
                 <div class="prompt-content">${prompt.content}</div>
+            </div>
+        `).join('');
+    }
+
+    updateSystemPromptsGrid() {
+        const grid = document.getElementById('prompts-grid');
+        if (!grid) {
+            return;
+        }
+        
+        // Get all system prompts from defaultPrompts
+        const systemPrompts = Object.keys(this.defaultPrompts).map(key => ({
+            id: key,
+            title: this.formatCategoryName(key),
+            category: key,
+            content: this.defaultPrompts[key],
+            isDefault: true
+        }));
+
+        if (systemPrompts.length === 0) {
+            grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #64748b;">
+                    <i class="fas fa-cogs" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                    <h3>No system prompts found</h3>
+                    <p>Create your first system prompt to get started.</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = systemPrompts.map(prompt => `
+            <div class="prompt-card system-prompt-card" data-id="${prompt.id}">
+                <div class="prompt-card-header">
+                    <div>
+                        <div class="prompt-title">${prompt.title}</div>
+                        <span class="prompt-category">${prompt.category}</span>
+                        <span class="prompt-type">System Prompt</span>
+                    </div>
+                    <div class="prompt-actions">
+                        <button class="action-btn" onclick="app.editSystemPrompt('${prompt.id}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn" onclick="app.deleteSystemPrompt('${prompt.id}')" title="Delete" 
+                                ${prompt.isDefault ? 'style="opacity: 0.5; cursor: not-allowed;" disabled' : ''}>
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        <button class="action-btn" onclick="app.useSystemPromptInComparison('${prompt.id}')" title="Use in Comparison">
+                            <i class="fas fa-balance-scale"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="prompt-content system-prompt-content">${prompt.content}</div>
             </div>
         `).join('');
     }
@@ -827,6 +909,52 @@ Always aim to be the most helpful and informative assistant possible while maint
         }
     }
 
+    editSystemPrompt(promptId) {
+        // Set the current category to the one being edited
+        this.currentCategory = promptId;
+        document.getElementById('category-select').value = promptId;
+        this.updateSystemPromptContent();
+        
+        // Switch to comparison tab to show the system prompt editor
+        this.switchTab('comparison');
+        
+        // Open the system prompt editor
+        this.openSystemPromptEditor();
+    }
+
+    deleteSystemPrompt(promptId) {
+        // Don't allow deletion of default system prompts
+        const defaultPrompts = ['writing', 'seo', 'coding', 'other'];
+        if (defaultPrompts.includes(promptId)) {
+            alert('Cannot delete default system prompts. You can only edit them.');
+            return;
+        }
+
+        if (confirm(`Are you sure you want to delete the "${this.formatCategoryName(promptId)}" system prompt?`)) {
+            delete this.defaultPrompts[promptId];
+            this.saveSystemPromptsToStorage();
+            this.updateSystemPromptsGrid();
+            this.updateSystemPromptDropdown();
+            
+            // If we deleted the current category, switch to a default one
+            if (this.currentCategory === promptId) {
+                this.currentCategory = 'writing';
+                document.getElementById('category-select').value = 'writing';
+                this.updateSystemPromptContent();
+            }
+        }
+    }
+
+    useSystemPromptInComparison(promptId) {
+        // Switch to comparison tab
+        this.switchTab('comparison');
+        
+        // Set the current category to the selected system prompt
+        this.currentCategory = promptId;
+        document.getElementById('category-select').value = promptId;
+        this.updateSystemPromptContent();
+    }
+
     async importUserPrompts() {
         try {
             const result = await ipcRenderer.invoke('import-prompts');
@@ -993,6 +1121,17 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Automatically save the user prompt
         await this.saveUserPromptFromComparison(userMessage);
 
+        // Fetch internet context if enabled
+        let internetContext = '';
+        if (this.internetAccessProvider === 'tavily' && this.tavilyApiKey) {
+            console.log('Fetching internet context...');
+            const context = await this.fetchInternetContext(userMessage);
+            if (context) {
+                internetContext = this.formatInternetContext(context);
+                console.log('Internet context added to prompt');
+            }
+        }
+
         // Get selected models from searchable dropdowns
         const selectedModels = [];
         this.modelDropdowns.forEach((dropdown, index) => {
@@ -1023,8 +1162,11 @@ Always aim to be the most helpful and informative assistant possible while maint
 
         // Run API calls for each selected model
         for (const model of selectedModels) {
-            await this.callLLM(model.id, model.name, systemPrompt, userMessage, model.slot);
+            await this.callLLM(model.id, model.name, systemPrompt, userMessage + internetContext, model.slot);
         }
+
+        // Save prompt session after all API calls are complete
+        this.savePromptSessionAfterComparison(systemPrompt, userMessage, selectedModels);
     }
 
     showModelLoading(slotNumber) {
@@ -1225,16 +1367,155 @@ Always aim to be the most helpful and informative assistant possible while maint
         }
     }
 
+    async saveTavilyApiKey() {
+        const apiKey = document.getElementById('tavily-api-key').value.trim();
+        if (!apiKey) {
+            alert('Please enter a Tavily API key.');
+            return;
+        }
+
+        this.tavilyApiKey = apiKey;
+        localStorage.setItem('tavily_api_key', apiKey);
+        
+        // Show success message
+        const saveBtn = document.getElementById('save-tavily-api-key');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        saveBtn.style.backgroundColor = '#10b981';
+        
+        setTimeout(() => {
+            saveBtn.textContent = originalText;
+            saveBtn.style.backgroundColor = '';
+        }, 1500);
+    }
+
+    async fetchInternetContext(query) {
+        if (this.internetAccessProvider !== 'tavily' || !this.tavilyApiKey) {
+            return null;
+        }
+
+        try {
+            console.log('Fetching internet context for query:', query);
+            
+            // Step 1: Search for relevant URLs using advanced search
+            const searchResponse = await axios.post('https://api.tavily.com/search', {
+                api_key: this.tavilyApiKey,
+                query: query,
+                search_depth: "advanced",
+                include_answer: true,
+                include_raw_content: false,
+                max_results: 10
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                timeout: 15000
+            });
+
+            if (!searchResponse.data || !searchResponse.data.results) {
+                return null;
+            }
+
+            // Filter URLs with score > 0.5 for relevance
+            const relevantUrls = searchResponse.data.results
+                .filter(result => result.score > 0.5)
+                .slice(0, 3) // Limit to top 3 most relevant URLs
+                .map(result => result.url);
+
+            if (relevantUrls.length === 0) {
+                console.log('No relevant URLs found with score > 0.5');
+                return null;
+            }
+
+            console.log('Found relevant URLs:', relevantUrls);
+
+            // Step 2: Extract content from the most relevant URLs
+            const extractPromises = relevantUrls.map(url => 
+                this.extractContentFromUrl(url)
+            );
+
+            const extractedContents = await Promise.all(extractPromises);
+            
+            // Filter out failed extractions and combine with search results
+            const context = [];
+            for (let i = 0; i < relevantUrls.length; i++) {
+                const searchResult = searchResponse.data.results.find(r => r.url === relevantUrls[i]);
+                const extractedContent = extractedContents[i];
+                
+                if (searchResult && extractedContent) {
+                    context.push({
+                        title: searchResult.title,
+                        content: extractedContent.content || searchResult.content,
+                        url: searchResult.url,
+                        score: searchResult.score
+                    });
+                }
+            }
+
+            console.log('Internet context extracted:', context);
+            return context;
+
+        } catch (error) {
+            console.error('Error fetching internet context:', error);
+            return null;
+        }
+    }
+
+    async extractContentFromUrl(url) {
+        try {
+            const response = await axios.post('https://api.tavily.com/extract', {
+                api_key: this.tavilyApiKey,
+                urls: [url],
+                extract_depth: "advanced"
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            });
+
+            if (response.data && response.data.results && response.data.results.length > 0) {
+                return response.data.results[0];
+            }
+        } catch (error) {
+            console.error(`Error extracting content from ${url}:`, error);
+        }
+        return null;
+    }
+
+    formatInternetContext(context) {
+        if (!context || context.length === 0) {
+            return '';
+        }
+
+        let formattedContext = '\n\n--- Internet Context ---\n';
+        context.forEach((item, index) => {
+            formattedContext += `\n${index + 1}. ${item.title}\n`;
+            formattedContext += `   ${item.content}\n`;
+            formattedContext += `   Source: ${item.url}\n`;
+            if (item.score) {
+                formattedContext += `   Relevance Score: ${item.score.toFixed(2)}\n`;
+            }
+        });
+        formattedContext += '\n--- End Internet Context ---\n';
+
+        return formattedContext;
+    }
+
     updateUI() {
         this.updatePromptsGrid();
         this.updateUserPromptsGrid();
+        this.updateSystemPromptsGrid();
         this.updateSystemPromptDropdown();
         this.updateSystemPromptContent();
         this.updateModelDropdowns();
         
-        // Load API key if available
+        // Load API keys if available
         if (this.apiKey) {
             document.getElementById('api-key').value = this.apiKey;
+        }
+        if (this.tavilyApiKey) {
+            document.getElementById('tavily-api-key').value = this.tavilyApiKey;
         }
     }
 
@@ -1595,6 +1876,264 @@ Please provide a helpful and well-structured response to the user's request.`
             inputTokens,
             outputTokens
         };
+    }
+
+    // Prompt Session Management
+    async savePromptSession(systemPrompt, userPrompt, responses) {
+        try {
+            const sessionData = {
+                id: Date.now().toString(),
+                timestamp: new Date().toISOString(),
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                responses: responses,
+                models: responses.map(r => r.model)
+            };
+
+            const result = await ipcRenderer.invoke('save-prompt-session', sessionData);
+            if (result.success) {
+                console.log('Prompt session saved successfully');
+                this.loadPromptHistory(); // Refresh the history
+            } else {
+                console.error('Failed to save prompt session:', result.error);
+            }
+        } catch (error) {
+            console.error('Error saving prompt session:', error);
+        }
+    }
+
+    async loadPromptHistory() {
+        try {
+            const result = await ipcRenderer.invoke('load-prompt-sessions');
+            if (result.success) {
+                this.promptSessions = result.data || [];
+                this.renderPromptHistory();
+            } else {
+                console.error('Failed to load prompt sessions:', result.error);
+            }
+        } catch (error) {
+            console.error('Error loading prompt sessions:', error);
+        }
+    }
+
+    renderPromptHistory() {
+        const historyList = document.getElementById('prompt-history-list');
+        if (!historyList) return;
+
+        if (this.promptSessions.length === 0) {
+            historyList.innerHTML = `
+                <div class="prompt-history-empty">
+                    <i class="fas fa-history"></i>
+                    <h4>No Previous Prompts</h4>
+                    <p>Run some comparisons to see your prompt history here</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Sort sessions by timestamp (newest first)
+        const sortedSessions = this.promptSessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        historyList.innerHTML = sortedSessions.map(session => {
+            const date = new Date(session.timestamp).toLocaleDateString();
+            const time = new Date(session.timestamp).toLocaleTimeString();
+            const modelsText = session.models.join(', ');
+            const preview = session.userPrompt.length > 100 
+                ? session.userPrompt.substring(0, 100) + '...' 
+                : session.userPrompt;
+
+            return `
+                <div class="prompt-history-item" data-session-id="${session.id}">
+                    <div class="prompt-history-item-header">
+                        <h4 class="prompt-history-title">${preview}</h4>
+                        <div class="prompt-history-meta">
+                            <div class="prompt-history-date">${date} ${time}</div>
+                            <div class="prompt-history-models">${modelsText}</div>
+                        </div>
+                    </div>
+                    <p class="prompt-history-preview">${preview}</p>
+                    <div class="prompt-history-item-actions">
+                        <button class="prompt-history-delete-btn" onclick="event.stopPropagation(); window.app.deletePromptSession('${session.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Add click handlers
+        historyList.querySelectorAll('.prompt-history-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (!e.target.closest('.prompt-history-delete-btn')) {
+                    const sessionId = item.dataset.sessionId;
+                    this.showPromptSessionDetail(sessionId);
+                }
+            });
+        });
+    }
+
+    showPromptSessionDetail(sessionId) {
+        const session = this.promptSessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        // Update modal content
+        document.getElementById('session-date').textContent = new Date(session.timestamp).toLocaleString();
+        document.getElementById('session-models').textContent = session.models.join(', ');
+        document.getElementById('session-system-prompt').textContent = session.systemPrompt;
+        document.getElementById('session-user-prompt').textContent = session.userPrompt;
+
+        // Render responses
+        const responsesContainer = document.getElementById('session-responses');
+        responsesContainer.innerHTML = session.responses.map(response => `
+            <div class="response-item">
+                <div class="response-header">
+                    <span class="response-model">${response.model}</span>
+                    <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+                </div>
+                <div class="response-content">${response.content}</div>
+            </div>
+        `).join('');
+
+        // Store current session ID for deletion
+        this.currentSessionId = sessionId;
+
+        // Show modal
+        document.getElementById('prompt-session-modal').style.display = 'flex';
+    }
+
+    async deletePromptSession(sessionId) {
+        if (!confirm('Are you sure you want to delete this prompt session?')) {
+            return;
+        }
+
+        try {
+            const result = await ipcRenderer.invoke('delete-prompt-session', sessionId);
+            if (result.success) {
+                console.log('Prompt session deleted successfully');
+                this.loadPromptHistory(); // Refresh the history
+            } else {
+                console.error('Failed to delete prompt session:', result.error);
+            }
+        } catch (error) {
+            console.error('Error deleting prompt session:', error);
+        }
+    }
+
+    searchPromptHistory(searchTerm) {
+        const historyItems = document.querySelectorAll('.prompt-history-item');
+        const term = searchTerm.toLowerCase();
+
+        historyItems.forEach(item => {
+            const title = item.querySelector('.prompt-history-title').textContent.toLowerCase();
+            const preview = item.querySelector('.prompt-history-preview').textContent.toLowerCase();
+            const models = item.querySelector('.prompt-history-models').textContent.toLowerCase();
+            
+            // Get the session ID to find the corresponding session data
+            const sessionId = item.dataset.sessionId;
+            const session = this.promptSessions.find(s => s.id === sessionId);
+            
+            // Search in responses content
+            let responseMatches = false;
+            if (session && session.responses) {
+                responseMatches = session.responses.some(response => 
+                    response.content.toLowerCase().includes(term)
+                );
+            }
+            
+            const matches = title.includes(term) || preview.includes(term) || models.includes(term) || responseMatches;
+            item.style.display = matches ? 'block' : 'none';
+        });
+    }
+
+    // Save prompt session after comparison is complete
+    async savePromptSessionAfterComparison(systemPrompt, userPrompt, selectedModels) {
+        try {
+            // Collect responses from all model outputs
+            const responses = [];
+            
+            for (const model of selectedModels) {
+                const outputElement = document.getElementById(`output-${model.slot}`);
+                if (outputElement && !outputElement.classList.contains('loading')) {
+                    const content = outputElement.textContent || outputElement.innerText || '';
+                    const costElement = document.getElementById(`cost-${model.slot}`);
+                    let cost = null;
+                    
+                    if (costElement && costElement.textContent && costElement.textContent !== '') {
+                        const costText = costElement.textContent;
+                        const costMatch = costText.match(/\$([\d.]+)/);
+                        if (costMatch) {
+                            cost = { totalCost: parseFloat(costMatch[1]) };
+                        }
+                    }
+                    
+                    // Only save if we have actual content (not loading or error states)
+                    if (content && !content.includes('Loading...') && !content.includes('Error:')) {
+                        responses.push({
+                            model: model.name,
+                            content: content,
+                            cost: cost
+                        });
+                    }
+                }
+            }
+            
+            // Only save if we have at least one response
+            if (responses.length > 0) {
+                await this.savePromptSession(systemPrompt, userPrompt, responses);
+            }
+        } catch (error) {
+            console.error('Error saving prompt session after comparison:', error);
+        }
+    }
+
+    // Initialize prompt history functionality
+    initPromptHistory() {
+        // Load prompt history on startup
+        this.loadPromptHistory();
+
+        // Search functionality
+        const searchInput = document.getElementById('prompt-history-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.searchPromptHistory(e.target.value);
+            });
+        }
+
+        // Modal event handlers
+        const sessionModal = document.getElementById('prompt-session-modal');
+        const closeModal = document.getElementById('close-prompt-session-modal');
+        const closeSessionModal = document.getElementById('close-session-modal');
+        const deleteSessionBtn = document.getElementById('delete-session-btn');
+
+        if (closeModal) {
+            closeModal.addEventListener('click', () => {
+                sessionModal.style.display = 'none';
+            });
+        }
+
+        if (closeSessionModal) {
+            closeSessionModal.addEventListener('click', () => {
+                sessionModal.style.display = 'none';
+            });
+        }
+
+        if (deleteSessionBtn) {
+            deleteSessionBtn.addEventListener('click', () => {
+                if (this.currentSessionId) {
+                    this.deletePromptSession(this.currentSessionId);
+                    sessionModal.style.display = 'none';
+                }
+            });
+        }
+
+        // Close modal when clicking outside
+        if (sessionModal) {
+            sessionModal.addEventListener('click', (e) => {
+                if (e.target === sessionModal) {
+                    sessionModal.style.display = 'none';
+                }
+            });
+        }
     }
 }
 

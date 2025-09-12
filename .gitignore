@@ -186,3 +186,8 @@ Thumbs.db
 *.deb
 *.rpm
 *.AppImage
+
+# Data files (user prompts and system prompts)
+data/system-prompts.json
+data/user-prompts.json
+data/prompt-sessions.json
