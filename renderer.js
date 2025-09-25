@@ -187,6 +187,16 @@ class PromptManager {
         // Store generation IDs for cost lookup
         this.generationIds = new Map(); // slotNumber -> generationId
         
+        // Chat-specific properties
+        this.chatModelDropdown = null;
+        this.selectedChatModel = null;
+        this.chatInternetProvider = 'none';
+        this.chatMessages = [];
+        this.chatProvider = 'openrouter'; // 'openrouter' or 'ollama'
+        this.ollamaStatus = 'unknown'; // 'online', 'offline', 'not_installed', 'checking'
+        this.ollamaModels = [];
+        this.chatSystemPromptCategory = 'writing'; // Current system prompt category for chat
+        
         this.defaultPrompts = {
             writing: `You are an expert writer and editor. Your role is to help create high-quality, engaging, and well-structured content. 
 
@@ -287,6 +297,10 @@ Always aim to be the most helpful and informative assistant possible while maint
         await this.loadAvailableModels();
         this.initPromptHistory(); // Initialize prompt history functionality
         this.updateUI();
+        
+        // Update chat dropdowns after everything is loaded
+        this.updateChatSystemPromptDropdown();
+        this.updateChatModelDropdown();
     }
 
     initializeModelDropdowns() {
@@ -297,6 +311,66 @@ Always aim to be the most helpful and informative assistant possible while maint
                 console.log(`Model ${i} selected:`, option.name);
             };
             this.modelDropdowns.push(dropdown);
+        }
+        
+        // Initialize chat dropdowns
+        this.initializeChatDropdowns();
+    }
+    
+    initializeChatDropdowns() {
+        // Initialize model dropdown
+        const chatModelElement = document.getElementById('chat-model-dropdown');
+        if (chatModelElement) {
+            this.chatModelDropdown = new SearchableDropdown('chat-model-dropdown');
+            this.chatModelDropdown.onChange = (option) => {
+                this.selectedChatModel = option;
+                this.enableChatInterface();
+                console.log('Chat model selected:', option.name);
+            };
+        }
+        
+        // Initialize provider dropdown
+        const chatProviderElement = document.getElementById('chat-provider-dropdown');
+        if (chatProviderElement) {
+            this.chatProviderDropdown = new SearchableDropdown('chat-provider-dropdown');
+            this.chatProviderDropdown.setOptions([
+                { id: 'openrouter', name: 'OpenRouter' },
+                { id: 'ollama', name: 'Ollama (Local)' }
+            ]);
+            this.chatProviderDropdown.setValue('openrouter');
+            this.chatProviderDropdown.onChange = (option) => {
+                this.chatProvider = option.id;
+                this.onChatProviderChanged();
+            };
+        }
+        
+        // Initialize internet context dropdown
+        const chatInternetElement = document.getElementById('chat-internet-dropdown');
+        if (chatInternetElement) {
+            this.chatInternetDropdown = new SearchableDropdown('chat-internet-dropdown');
+            this.chatInternetDropdown.setOptions([
+                { id: 'none', name: 'None' },
+                { id: 'tavily', name: 'Tavily (External API)' },
+                { id: 'openrouter', name: 'OpenRouter (Built-in Web Search)' }
+            ]);
+            this.chatInternetDropdown.setValue('none');
+            this.chatInternetDropdown.onChange = (option) => {
+                this.chatInternetProvider = option.id;
+                this.updateChatProviderInfo();
+            };
+        }
+        
+        // Initialize system prompt dropdown
+        const chatSystemPromptElement = document.getElementById('chat-system-prompt-dropdown');
+        if (chatSystemPromptElement) {
+            this.chatSystemPromptDropdown = new SearchableDropdown('chat-system-prompt-dropdown');
+            this.chatSystemPromptDropdown.onChange = (option) => {
+                this.chatSystemPromptCategory = option.id;
+                this.updateChatSystemPromptPreview();
+            };
+            
+            // Initialize with available prompts
+            this.updateChatSystemPromptDropdown();
         }
     }
 
@@ -437,7 +511,60 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Internet access dropdown
         document.getElementById('internet-access-select').addEventListener('change', (e) => {
             this.internetAccessProvider = e.target.value;
+            this.updateProviderInfo();
         });
+        
+        // Ollama action button
+        const ollamaActionBtn = document.getElementById('ollama-action-btn');
+        if (ollamaActionBtn) {
+            ollamaActionBtn.addEventListener('click', () => {
+                this.handleOllamaAction();
+            });
+        }
+        
+        // Ollama refresh button
+        const ollamaRefreshBtn = document.getElementById('ollama-refresh-btn');
+        if (ollamaRefreshBtn) {
+            ollamaRefreshBtn.addEventListener('click', () => {
+                this.refreshOllamaModels();
+            });
+        }
+        
+        // Chat send button
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        if (chatSendBtn) {
+            chatSendBtn.addEventListener('click', () => {
+                this.sendChatMessage();
+            });
+        }
+        
+        // Chat input enter key
+        const chatInput = document.getElementById('chat-message-input');
+        if (chatInput) {
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
+        }
+        
+        
+        // Chat system prompt view button
+        const chatEditSystemPromptBtn = document.getElementById('chat-edit-system-prompt-btn');
+        if (chatEditSystemPromptBtn) {
+            chatEditSystemPromptBtn.addEventListener('click', () => {
+                this.openChatSystemPromptModal();
+            });
+        }
+        
+        // Chat system prompt preview click
+        const chatSystemPromptPreview = document.getElementById('chat-system-prompt-preview');
+        if (chatSystemPromptPreview) {
+            chatSystemPromptPreview.addEventListener('click', () => {
+                this.openChatSystemPromptModal();
+            });
+        }
 
         // Add refresh models button if it exists
         const refreshModelsBtn = document.getElementById('refresh-models-btn');
@@ -512,6 +639,16 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Update system prompts grid if switching to system-prompts tab
         if (tabName === 'system-prompts') {
             this.updateSystemPromptsGrid();
+        }
+        
+        // Update chat tab if switching to it
+        if (tabName === 'chat') {
+            this.updateChatUI();
+            // Make sure dropdowns are properly initialized
+            setTimeout(() => {
+                this.updateChatSystemPromptDropdown();
+                this.updateChatModelDropdown();
+            }, 100);
         }
     }
 
@@ -1033,11 +1170,6 @@ Always aim to be the most helpful and informative assistant possible while maint
             // Log some model names to see what we're getting
             console.log('Sample models:', this.availableModels.slice(0, 10).map(m => ({id: m.id, name: m.name})));
             
-            // Check for specific models
-            const qwenModels = this.availableModels.filter(m => m.name.toLowerCase().includes('qwen'));
-            const deepseekModels = this.availableModels.filter(m => m.name.toLowerCase().includes('deepseek'));
-            console.log('Qwen models found:', qwenModels.length, qwenModels.map(m => m.name));
-            console.log('DeepSeek models found:', deepseekModels.length, deepseekModels.map(m => m.name));
             
             this.updateModelsList();
             this.updateModelDropdowns();
@@ -1109,14 +1241,24 @@ Always aim to be the most helpful and informative assistant possible while maint
         // Automatically save the user prompt
         await this.saveUserPromptFromComparison(userMessage);
 
-        // Fetch internet context if enabled
+        // Fetch internet context if using Tavily
         let internetContext = '';
         if (this.internetAccessProvider === 'tavily' && this.tavilyApiKey) {
-            console.log('Fetching internet context...');
-            const context = await this.fetchInternetContext(userMessage);
-            if (context) {
-                internetContext = this.formatInternetContext(context);
-                console.log('Internet context added to prompt');
+            console.log('Fetching internet context with Tavily...');
+            try {
+                const context = await this.fetchInternetContext(userMessage);
+                if (context) {
+                    internetContext = this.formatInternetContext(context);
+                    console.log('Tavily internet context added to prompt');
+                } else {
+                    // If search is enabled but failed, show error and stop
+                    alert('Tavily internet search failed. Please check your API key or try again later.');
+                    return;
+                }
+            } catch (error) {
+                console.error('Tavily internet search error:', error);
+                alert('Tavily internet search failed. Please check your API key or try again later.');
+                return;
             }
         }
 
@@ -1150,7 +1292,17 @@ Always aim to be the most helpful and informative assistant possible while maint
 
         // Run API calls for each selected model
         for (const model of selectedModels) {
-            await this.callLLM(model.id, model.name, systemPrompt, userMessage + internetContext, model.slot);
+            let modelId = model.id;
+            let finalUserMessage = userMessage + internetContext;
+            
+            // Handle OpenRouter web search by appending :online to model ID
+            if (this.internetAccessProvider === 'openrouter') {
+                modelId = model.id + ':online';
+                finalUserMessage = userMessage; // Don't add Tavily context for OpenRouter search
+                console.log(`Using OpenRouter web search with model: ${modelId}`);
+            }
+            
+            await this.callLLM(modelId, model.name, systemPrompt, finalUserMessage, model.slot);
         }
 
         // Wait a bit for OpenRouter to process the generation data
@@ -1279,8 +1431,14 @@ Always aim to be the most helpful and informative assistant possible while maint
                 console.log('Using usage data from response:', costInfo);
             }
             
+            // Add web search indicator if using OpenRouter web search
+            let displayContent = content;
+            if (modelId.includes(':online')) {
+                displayContent = `🌐 Web Search Enabled\n\n${content}`;
+            }
+            
             // Update the output with initial cost info (tokens only)
-            this.updateModelOutput(slotNumber, content, costInfo);
+            this.updateModelOutput(slotNumber, displayContent, costInfo);
         } catch (error) {
             console.error(`Error calling ${modelName}:`, error);
             let errorMessage = 'Unknown error occurred';
@@ -1609,7 +1767,20 @@ Always aim to be the most helpful and informative assistant possible while maint
 
         } catch (error) {
             console.error('Error fetching internet context:', error);
-            return null;
+            
+            // Provide more specific error information
+            if (error.response?.status === 400) {
+                console.error('Tavily API Error 400: Bad Request - Check your API key and request format');
+            } else if (error.response?.status === 401) {
+                console.error('Tavily API Error 401: Unauthorized - Invalid API key');
+            } else if (error.response?.status === 429) {
+                console.error('Tavily API Error 429: Rate limit exceeded');
+            } else if (error.code === 'ECONNABORTED') {
+                console.error('Tavily API timeout - Request took too long');
+            }
+            
+            // Re-throw the error so the calling code can handle it
+            throw error;
         }
     }
 
@@ -1661,6 +1832,7 @@ Always aim to be the most helpful and informative assistant possible while maint
         this.updateSystemPromptDropdown();
         this.updateSystemPromptContent();
         this.updateModelDropdowns();
+        this.updateProviderInfo();
         
         // Load API keys if available
         if (this.apiKey) {
@@ -1668,6 +1840,48 @@ Always aim to be the most helpful and informative assistant possible while maint
         }
         if (this.tavilyApiKey) {
             document.getElementById('tavily-api-key').value = this.tavilyApiKey;
+        }
+    }
+
+    updateProviderInfo() {
+        const providerInfo = document.getElementById('provider-info');
+        const providerInfoContent = document.getElementById('provider-info-content');
+        
+        if (!providerInfo || !providerInfoContent) {
+            return;
+        }
+
+        // Remove existing classes
+        providerInfo.classList.remove('tavily', 'openrouter');
+
+        switch (this.internetAccessProvider) {
+            case 'tavily':
+                providerInfo.classList.add('tavily');
+                providerInfoContent.innerHTML = `
+                    <strong>Tavily Search:</strong> External search API that provides up-to-date web results.<br>
+                    • Requires separate Tavily API key<br>
+                    • Advanced search with content extraction<br>
+                    • Results are pre-processed and added to your prompt
+                `;
+                providerInfo.style.display = 'block';
+                break;
+                
+            case 'openrouter':
+                providerInfo.classList.add('openrouter');
+                providerInfoContent.innerHTML = `
+                    <strong>OpenRouter Web Search:</strong> Built-in web search using Exa.ai integration.<br>
+                    • Uses your existing OpenRouter API key<br>
+                    • Fetches up to 5 web results per request<br>
+                    • <strong>Cost:</strong> $4 per 1,000 web results (added to model costs)<br>
+                    • Results automatically integrated into model responses
+                `;
+                providerInfo.style.display = 'block';
+                break;
+                
+            case 'none':
+            default:
+                providerInfo.style.display = 'none';
+                break;
         }
     }
 
@@ -1960,15 +2174,21 @@ Please provide a helpful and well-structured response to the user's request.`
             console.log(`Setting ${sortedModels.length} models in dropdowns`);
             console.log('First model sample:', sortedModels[0]);
             
-            // Update all dropdowns with all available models
+            // Update all comparison dropdowns with all available models
             this.modelDropdowns.forEach(dropdown => {
                 dropdown.setOptions(sortedModels);
             });
+            
+            // Also update the chat model dropdown if it exists and we're using OpenRouter
+            this.updateChatModelDropdown();
         } else {
             // Show empty state for all dropdowns
             this.modelDropdowns.forEach(dropdown => {
                 dropdown.setOptions([]);
             });
+            
+            // Also clear the chat model dropdown
+            this.updateChatModelDropdown();
         }
     }
 
@@ -2313,6 +2533,762 @@ Please provide a helpful and well-structured response to the user's request.`
                 }
             });
         }
+    }
+    
+    // Ollama integration methods
+    async onChatProviderChanged() {
+        console.log('Chat provider changed to:', this.chatProvider);
+        
+        if (this.chatProvider === 'ollama') {
+            // Show Ollama status section
+            const ollamaStatus = document.getElementById('ollama-status-compact');
+            if (ollamaStatus) {
+                ollamaStatus.style.display = 'flex';
+            }
+            
+            // Check Ollama status
+            await this.checkOllamaStatus();
+        } else {
+            // Hide Ollama status section
+            const ollamaStatus = document.getElementById('ollama-status-compact');
+            if (ollamaStatus) {
+                ollamaStatus.style.display = 'none';
+            }
+        }
+        
+        // Update model dropdown based on provider
+        this.updateChatModelDropdown();
+        
+        // Show/hide internet context section based on provider
+        this.updateInternetContextVisibility();
+        
+        // Update provider info display
+        this.updateChatProviderInfo();
+        
+        // Reset selected model when switching providers
+        this.selectedChatModel = null;
+        this.disableChatInterface();
+    }
+    
+    async checkOllamaStatus() {
+        this.updateOllamaStatusUI('checking', 'Checking Ollama status...');
+        
+        try {
+            // First check if Ollama is installed by trying to get version
+            const versionResult = await ipcRenderer.invoke('check-ollama-installation');
+            
+            if (!versionResult.success) {
+                this.ollamaStatus = 'not_installed';
+                this.updateOllamaStatusUI('offline', 'Not installed');
+                this.showOllamaActionButton('install');
+                return;
+            }
+            
+            // Check if Ollama server is running
+            const statusResult = await this.pingOllamaServer();
+            
+            if (statusResult) {
+                this.ollamaStatus = 'online';
+                this.updateOllamaStatusUI('online', 'Running');
+                this.showOllamaActionButton('stop');
+                
+                // Load Ollama models
+                await this.loadOllamaModels();
+            } else {
+                this.ollamaStatus = 'offline';
+                this.updateOllamaStatusUI('offline', 'Stopped');
+                this.showOllamaActionButton('start');
+            }
+        } catch (error) {
+            console.error('Error checking Ollama status:', error);
+            this.ollamaStatus = 'unknown';
+            this.updateOllamaStatusUI('offline', 'Error');
+            this.showOllamaActionButton('start');
+        }
+    }
+    
+    async pingOllamaServer() {
+        try {
+            const response = await axios.get('http://localhost:11434/api/tags', {
+                timeout: 3000
+            });
+            return response.status === 200;
+        } catch (error) {
+            return false;
+        }
+    }
+    
+    updateOllamaStatusUI(status, text) {
+        const statusDot = document.getElementById('ollama-status-dot');
+        const statusText = document.getElementById('ollama-status-text');
+        
+        if (statusDot) {
+            statusDot.className = `status-dot ${status}`;
+        }
+        
+        if (statusText) {
+            statusText.textContent = text;
+        }
+    }
+    
+    showOllamaActionButton(action) {
+        const actionBtn = document.getElementById('ollama-action-btn');
+        const refreshBtn = document.getElementById('ollama-refresh-btn');
+        
+        if (!actionBtn) return;
+        
+        const icon = actionBtn.querySelector('i');
+        actionBtn.style.display = 'inline-flex';
+        actionBtn.dataset.action = action;
+        
+        // Show/hide refresh button based on status
+        if (refreshBtn) {
+            if (action === 'stop') {
+                // Show refresh button when Ollama is running
+                refreshBtn.style.display = 'inline-flex';
+            } else {
+                // Hide refresh button when Ollama is not running
+                refreshBtn.style.display = 'none';
+            }
+        }
+        
+        switch (action) {
+            case 'start':
+                icon.className = 'fas fa-play';
+                actionBtn.title = 'Start Ollama';
+                break;
+            case 'stop':
+                icon.className = 'fas fa-stop';
+                actionBtn.title = 'Stop Ollama';
+                break;
+            case 'install':
+                icon.className = 'fas fa-download';
+                actionBtn.title = 'Install Ollama';
+                break;
+            default:
+                actionBtn.style.display = 'none';
+                if (refreshBtn) refreshBtn.style.display = 'none';
+        }
+    }
+    
+    handleOllamaAction() {
+        const actionBtn = document.getElementById('ollama-action-btn');
+        if (!actionBtn) return;
+        
+        const action = actionBtn.dataset.action;
+        
+        switch (action) {
+            case 'start':
+                this.startOllama();
+                break;
+            case 'stop':
+                this.stopOllama();
+                break;
+            case 'install':
+                this.openOllamaDownload();
+                break;
+        }
+    }
+    
+    async startOllama() {
+        const actionBtn = document.getElementById('ollama-action-btn');
+        if (actionBtn) {
+            actionBtn.disabled = true;
+            actionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+        
+        try {
+            const result = await ipcRenderer.invoke('start-ollama');
+            
+            if (result.success) {
+                // Wait a bit for server to start, then check status
+                setTimeout(() => {
+                    this.checkOllamaStatus();
+                }, 2000);
+            } else {
+                alert(`Failed to start Ollama: ${result.error}`);
+                this.updateOllamaStatusUI('offline', 'Failed to start');
+                this.showOllamaActionButton('start');
+            }
+        } catch (error) {
+            console.error('Error starting Ollama:', error);
+            alert('Failed to start Ollama. Please try starting it manually.');
+        } finally {
+            if (actionBtn) {
+                actionBtn.disabled = false;
+                this.showOllamaActionButton('start');
+            }
+        }
+    }
+    
+    async stopOllama() {
+        const actionBtn = document.getElementById('ollama-action-btn');
+        if (actionBtn) {
+            actionBtn.disabled = true;
+            actionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+        
+        try {
+            const result = await ipcRenderer.invoke('stop-ollama');
+            
+            if (result.success) {
+                this.ollamaStatus = 'offline';
+                this.updateOllamaStatusUI('offline', 'Stopped');
+                this.showOllamaActionButton('start');
+                this.ollamaModels = [];
+                this.updateChatModelDropdown();
+            } else {
+                alert(`Failed to stop Ollama: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Error stopping Ollama:', error);
+            alert('Failed to stop Ollama. Please try stopping it manually.');
+        } finally {
+            if (actionBtn) {
+                actionBtn.disabled = false;
+                this.showOllamaActionButton('stop');
+            }
+        }
+    }
+    
+    openOllamaDownload() {
+        const { shell } = require('electron');
+        shell.openExternal('https://ollama.com/download');
+    }
+    
+    async loadOllamaModels() {
+        try {
+            console.log('Loading Ollama models...');
+            const response = await axios.get('http://localhost:11434/api/tags', {
+                timeout: 5000
+            });
+            
+            console.log('Ollama API response:', response.data);
+            
+            if (response.data && response.data.models) {
+                this.ollamaModels = response.data.models.map(model => ({
+                    id: model.name,
+                    name: model.name,
+                    size: model.size,
+                    modified_at: model.modified_at
+                }));
+                
+                console.log(`Loaded ${this.ollamaModels.length} Ollama models:`, this.ollamaModels.map(m => m.name));
+                
+                // Update the dropdown after loading models
+                this.updateChatModelDropdown();
+            } else {
+                console.warn('No models found in Ollama response or unexpected response format');
+                this.ollamaModels = [];
+            }
+        } catch (error) {
+            console.error('Error loading Ollama models:', error);
+            if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+            }
+            this.ollamaModels = [];
+        }
+    }
+    
+    async refreshOllamaModels() {
+        const refreshBtn = document.getElementById('ollama-refresh-btn');
+        if (refreshBtn) {
+            const icon = refreshBtn.querySelector('i');
+            icon.className = 'fas fa-spinner fa-spin';
+            refreshBtn.disabled = true;
+        }
+        
+        try {
+            await this.loadOllamaModels();
+            console.log('Ollama models refreshed successfully');
+        } catch (error) {
+            console.error('Error refreshing Ollama models:', error);
+        } finally {
+            if (refreshBtn) {
+                const icon = refreshBtn.querySelector('i');
+                icon.className = 'fas fa-sync-alt';
+                refreshBtn.disabled = false;
+            }
+        }
+    }
+    
+    updateInternetContextVisibility() {
+        const internetContextSection = document.querySelector('.chat-context-selection');
+        if (internetContextSection) {
+            // Keep internet context visible for both providers
+            internetContextSection.style.display = 'block';
+        }
+    }
+
+    // Chat functionality methods
+    updateChatUI() {
+        this.updateChatModelDropdown();
+        this.updateChatProviderInfo();
+        this.updateChatSystemPromptDropdown();
+        this.updateChatSystemPromptPreview();
+        this.updateInternetContextVisibility();
+    }
+    
+    updateChatModelDropdown() {
+        if (!this.chatModelDropdown) {
+            console.warn('Chat model dropdown not initialized yet');
+            return;
+        }
+        
+        let modelsToShow = [];
+        
+        if (this.chatProvider === 'openrouter' && this.availableModels.length > 0) {
+            // Sort OpenRouter models same way as comparison dropdowns
+            modelsToShow = this.availableModels
+                .sort((a, b) => {
+                    const aPopular = a.name.toLowerCase().includes('gpt') || 
+                                   a.name.toLowerCase().includes('claude') || 
+                                   a.name.toLowerCase().includes('llama') ||
+                                   a.name.toLowerCase().includes('gemini');
+                    const bPopular = b.name.toLowerCase().includes('gpt') || 
+                                   b.name.toLowerCase().includes('claude') || 
+                                   b.name.toLowerCase().includes('llama') ||
+                                   b.name.toLowerCase().includes('gemini');
+                    
+                    if (aPopular && !bPopular) return -1;
+                    if (!aPopular && bPopular) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            console.log(`Updating chat model dropdown with ${modelsToShow.length} OpenRouter models`);
+        } else if (this.chatProvider === 'ollama' && this.ollamaModels.length > 0) {
+            // Use Ollama models
+            modelsToShow = this.ollamaModels.sort((a, b) => a.name.localeCompare(b.name));
+            console.log(`Updating chat model dropdown with ${modelsToShow.length} Ollama models`);
+        } else {
+            console.log(`No models available for provider: ${this.chatProvider} (OpenRouter: ${this.availableModels.length}, Ollama: ${this.ollamaModels.length})`);
+        }
+        
+        this.chatModelDropdown.setOptions(modelsToShow);
+        
+        // Update placeholder based on provider and status
+        const searchInput = this.chatModelDropdown.searchInput;
+        if (searchInput) {
+            if (this.chatProvider === 'ollama') {
+                if (this.ollamaStatus === 'online' && this.ollamaModels.length > 0) {
+                    searchInput.placeholder = 'Search Ollama models...';
+                } else if (this.ollamaStatus === 'online' && this.ollamaModels.length === 0) {
+                    searchInput.placeholder = 'No Ollama models found';
+                } else {
+                    searchInput.placeholder = 'Start Ollama to see models';
+                }
+            } else {
+                if (this.availableModels.length > 0) {
+                    searchInput.placeholder = 'Search OpenRouter models...';
+                } else {
+                    searchInput.placeholder = 'Configure API key to see models';
+                }
+            }
+        }
+    }
+    
+    updateChatProviderInfo() {
+        const providerInfo = document.getElementById('chat-provider-info');
+        const providerInfoContent = document.getElementById('chat-provider-info-content');
+        
+        if (!providerInfo || !providerInfoContent) {
+            return;
+        }
+
+        // Remove existing classes
+        providerInfo.classList.remove('tavily', 'openrouter');
+
+        switch (this.chatInternetProvider) {
+            case 'tavily':
+                providerInfo.classList.add('tavily');
+                providerInfoContent.innerHTML = `
+                    <strong>Tavily Search:</strong> External search API that provides up-to-date web results.<br>
+                    • Requires separate Tavily API key<br>
+                    • Advanced search with content extraction<br>
+                    • Works with both OpenRouter and Ollama models<br>
+                    • Results are pre-processed and added to your prompt
+                `;
+                providerInfo.style.display = 'block';
+                break;
+                
+            case 'openrouter':
+                providerInfo.classList.add('openrouter');
+                if (this.chatProvider === 'ollama') {
+                    providerInfoContent.innerHTML = `
+                        <strong>OpenRouter Web Search:</strong> Built-in web search using Exa.ai integration.<br>
+                        • <strong>Note:</strong> Only available with OpenRouter models<br>
+                        • Switch to OpenRouter provider to use this feature<br>
+                        • Consider using Tavily search for local models instead
+                    `;
+                } else {
+                    providerInfoContent.innerHTML = `
+                        <strong>OpenRouter Web Search:</strong> Built-in web search using Exa.ai integration.<br>
+                        • Uses your existing OpenRouter API key<br>
+                        • Fetches up to 5 web results per request<br>
+                        • <strong>Cost:</strong> $4 per 1,000 web results (added to model costs)<br>
+                        • Results automatically integrated into model responses
+                    `;
+                }
+                providerInfo.style.display = 'block';
+                break;
+                
+            case 'none':
+            default:
+                providerInfo.style.display = 'none';
+                break;
+        }
+    }
+    
+    updateChatSystemPromptDropdown() {
+        if (!this.chatSystemPromptDropdown) return;
+        
+        // Make sure we have default prompts loaded
+        if (!this.defaultPrompts || Object.keys(this.defaultPrompts).length === 0) {
+            console.warn('Default prompts not loaded yet, skipping system prompt dropdown update');
+            return;
+        }
+        
+        // Create options for all available prompts
+        const options = Object.keys(this.defaultPrompts).map(key => ({
+            id: key,
+            name: this.formatCategoryName(key)
+        }));
+        
+        console.log('Updating chat system prompt dropdown with options:', options);
+        this.chatSystemPromptDropdown.setOptions(options);
+        
+        // Set the current selection
+        if (this.chatSystemPromptCategory) {
+            this.chatSystemPromptDropdown.setValue(this.chatSystemPromptCategory);
+        } else {
+            // Default to first option if no category is set
+            this.chatSystemPromptCategory = options[0]?.id || 'writing';
+            this.chatSystemPromptDropdown.setValue(this.chatSystemPromptCategory);
+        }
+    }
+    
+    updateChatSystemPromptPreview() {
+        const preview = document.getElementById('chat-system-prompt-preview');
+        if (!preview) return;
+        
+        const promptContent = this.defaultPrompts[this.chatSystemPromptCategory] || this.defaultPrompts.other;
+        preview.textContent = promptContent;
+        
+        // Start in collapsed state
+        preview.classList.add('collapsed');
+    }
+    
+    openChatSystemPromptModal() {
+        // Set the current category to the chat category
+        this.currentCategory = this.chatSystemPromptCategory;
+        document.getElementById('category-select').value = this.chatSystemPromptCategory;
+        this.updateSystemPromptContent();
+        
+        // Open the system prompt editor
+        this.openSystemPromptEditor();
+    }
+
+    enableChatInterface() {
+        const chatInput = document.getElementById('chat-message-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        
+        if (chatInput && chatSendBtn && this.selectedChatModel) {
+            chatInput.disabled = false;
+            chatSendBtn.disabled = false;
+            chatInput.placeholder = `Chat with ${this.selectedChatModel.name}...`;
+            
+            // Hide welcome message and show empty chat
+            this.showChatInterface();
+        }
+    }
+    
+    disableChatInterface() {
+        const chatInput = document.getElementById('chat-message-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        
+        if (chatInput) {
+            chatInput.disabled = true;
+            chatInput.placeholder = 'Select a model to start chatting...';
+        }
+        
+        if (chatSendBtn) {
+            chatSendBtn.disabled = true;
+        }
+    }
+    
+    showChatInterface() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages && this.chatMessages.length === 0) {
+            chatMessages.innerHTML = '';
+        }
+    }
+    
+    async sendChatMessage() {
+        const chatInput = document.getElementById('chat-message-input');
+        const message = chatInput.value.trim();
+        
+        if (!message || !this.selectedChatModel) {
+            return;
+        }
+        
+        if (!this.apiKey) {
+            alert('Please configure your OpenRouter API key in Settings first.');
+            return;
+        }
+        
+        // Clear input
+        chatInput.value = '';
+        
+        // Add user message to chat
+        this.addChatMessage('user', message);
+        
+        // Show loading message
+        const loadingId = this.addChatLoadingMessage();
+        
+        try {
+            // Prepare model ID for web search if needed
+            let modelId = this.selectedChatModel.id;
+            let finalMessage = message;
+            
+            // Handle internet context for both providers
+            let internetContext = '';
+            
+            // Fetch internet context if using Tavily (works with both OpenRouter and Ollama)
+            if (this.chatInternetProvider === 'tavily' && this.tavilyApiKey) {
+                console.log('Fetching internet context with Tavily...');
+                try {
+                    const context = await this.fetchInternetContext(message);
+                    if (context) {
+                        internetContext = this.formatInternetContext(context);
+                        finalMessage = message + internetContext;
+                        console.log('Tavily internet context added to chat message');
+                    }
+                } catch (error) {
+                    console.error('Tavily internet search error:', error);
+                    this.removeChatLoadingMessage(loadingId);
+                    this.addChatMessage('assistant', 'Sorry, there was an error with the internet search. Please try again.', null, true);
+                    return;
+                }
+            }
+            
+            // Handle OpenRouter web search (only for OpenRouter models)
+            if (this.chatProvider === 'openrouter' && this.chatInternetProvider === 'openrouter') {
+                modelId = this.selectedChatModel.id + ':online';
+                finalMessage = message; // Don't add Tavily context for OpenRouter search
+                console.log(`Using OpenRouter web search with model: ${modelId}`);
+            }
+            
+            // Get the system prompt for the chat
+            const systemPrompt = this.defaultPrompts[this.chatSystemPromptCategory] || this.defaultPrompts.other;
+            
+            // Call the appropriate LLM API based on provider
+            let response;
+            if (this.chatProvider === 'ollama') {
+                response = await this.callOllamaChatLLM(this.selectedChatModel.id, systemPrompt, finalMessage);
+            } else {
+                response = await this.callChatLLM(modelId, systemPrompt, finalMessage);
+            }
+            
+            // Remove loading message
+            this.removeChatLoadingMessage(loadingId);
+            
+            // Add assistant response
+            this.addChatMessage('assistant', response.content, response.cost);
+            
+            // Store the message pair
+            this.chatMessages.push({
+                user: message,
+                assistant: response.content,
+                model: this.selectedChatModel.name,
+                cost: response.cost,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error sending chat message:', error);
+            this.removeChatLoadingMessage(loadingId);
+            this.addChatMessage('assistant', `Error: ${error.message}`, null, true);
+        }
+    }
+    
+    addChatMessage(role, content, cost = null, isError = false) {
+        const chatMessages = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${role}`;
+        
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = `message-bubble ${role}`;
+        if (isError) {
+            bubbleDiv.style.background = '#fee2e2';
+            bubbleDiv.style.color = '#dc2626';
+            bubbleDiv.style.border = '1px solid #fecaca';
+        }
+        bubbleDiv.textContent = content;
+        
+        messageDiv.appendChild(bubbleDiv);
+        
+        // Add message info for assistant messages
+        if (role === 'assistant' && !isError) {
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'message-info';
+            
+            const modelSpan = document.createElement('span');
+            modelSpan.className = 'message-model';
+            modelSpan.textContent = this.selectedChatModel.name;
+            infoDiv.appendChild(modelSpan);
+            
+            if (cost && cost.totalCost > 0) {
+                const costSpan = document.createElement('span');
+                costSpan.className = 'message-cost';
+                costSpan.textContent = `$${cost.totalCost.toFixed(6)}`;
+                infoDiv.appendChild(costSpan);
+            }
+            
+            messageDiv.appendChild(infoDiv);
+        }
+        
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        return messageDiv;
+    }
+    
+    addChatLoadingMessage() {
+        const chatMessages = document.getElementById('chat-messages');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message assistant';
+        
+        const loadingBubble = document.createElement('div');
+        loadingBubble.className = 'message-loading';
+        loadingBubble.innerHTML = `
+            <div class="loading-spinner"></div>
+            <span>Thinking...</span>
+        `;
+        
+        loadingDiv.appendChild(loadingBubble);
+        chatMessages.appendChild(loadingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        return loadingDiv;
+    }
+    
+    removeChatLoadingMessage(loadingElement) {
+        if (loadingElement && loadingElement.parentNode) {
+            loadingElement.parentNode.removeChild(loadingElement);
+        }
+    }
+    
+    async callChatLLM(modelId, systemPrompt, message) {
+        const messages = [];
+        
+        // Add system prompt if provided
+        if (systemPrompt) {
+            messages.push({ role: 'system', content: systemPrompt });
+        }
+        
+        // Add user message
+        messages.push({ role: 'user', content: message });
+        
+        const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+            model: modelId,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000,
+            stream: false
+        }, {
+            headers: {
+                'Authorization': `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 30000
+        });
+
+        const content = response.data.choices[0].message.content;
+        
+        // Try to get cost information
+        let costInfo = null;
+        if (response.data.usage) {
+            const usage = response.data.usage;
+            costInfo = {
+                inputTokens: usage.prompt_tokens || 0,
+                outputTokens: usage.completion_tokens || 0,
+                totalTokens: usage.total_tokens || 0,
+                totalCost: 0 // Will be updated by generation API if available
+            };
+        }
+        
+        // Try to get detailed cost information
+        const generationId = response.data.id;
+        if (generationId) {
+            try {
+                // Wait a bit and try to get cost info
+                setTimeout(async () => {
+                    const detailedCost = await this.getGenerationCostWithRetry(generationId, 3, 2000);
+                    if (detailedCost && detailedCost.totalCost > 0) {
+                        // Update the cost display in the last assistant message
+                        const chatMessages = document.getElementById('chat-messages');
+                        const lastMessage = chatMessages.lastElementChild;
+                        if (lastMessage && lastMessage.classList.contains('assistant')) {
+                            const costSpan = lastMessage.querySelector('.message-cost');
+                            if (costSpan) {
+                                costSpan.textContent = `$${detailedCost.totalCost.toFixed(6)}`;
+                            }
+                        }
+                    }
+                }, 3000);
+            } catch (error) {
+                console.error('Error fetching detailed cost info:', error);
+            }
+        }
+        
+        // Add web search indicator if using OpenRouter web search
+        let displayContent = content;
+        if (modelId.includes(':online')) {
+            displayContent = `🌐 Web Search Enabled\n\n${content}`;
+        }
+        
+        return {
+            content: displayContent,
+            cost: costInfo
+        };
+    }
+    
+    async callOllamaChatLLM(modelId, systemPrompt, message) {
+        // Combine system prompt and user message for Ollama
+        let fullPrompt = message;
+        if (systemPrompt) {
+            fullPrompt = `${systemPrompt}\n\nUser: ${message}\n\nAssistant:`;
+        }
+        
+        const response = await axios.post('http://localhost:11434/api/generate', {
+            model: modelId,
+            prompt: fullPrompt,
+            stream: false,
+            options: {
+                temperature: 0.7,
+                num_predict: 1000
+            }
+        }, {
+            timeout: 60000 // Ollama can be slower, especially for larger models
+        });
+
+        const content = response.data.response;
+        
+        // Ollama doesn't provide detailed cost information, but we can estimate tokens
+        const estimatedInputTokens = this.estimateTokens(fullPrompt);
+        const estimatedOutputTokens = this.estimateTokens(content);
+        
+        const costInfo = {
+            inputTokens: estimatedInputTokens,
+            outputTokens: estimatedOutputTokens,
+            totalTokens: estimatedInputTokens + estimatedOutputTokens,
+            totalCost: 0 // Local models are free
+        };
+        
+        return {
+            content: content,
+            cost: costInfo
+        };
     }
 }
 

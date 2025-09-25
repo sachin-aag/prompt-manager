@@ -18,7 +18,11 @@
             
             <div class="sidebar-content">
                 <div class="nav-section">
-                    <button class="nav-btn active" data-tab="prompts">
+                    <button class="nav-btn active" data-tab="chat">
+                        <i class="fas fa-comments"></i>
+                        <span>Simple Chat</span>
+                    </button>
+                    <button class="nav-btn" data-tab="prompts">
                         <i class="fas fa-file-text"></i>
                         <span>My Prompts</span>
                     </button>
@@ -41,8 +45,105 @@
 
         <!-- Main Content -->
         <div class="main-content">
+            <!-- Simple Chat Tab -->
+            <div class="tab-content active" id="chat-tab">
+                <div class="content-header">
+                    <h2>Simple Chat</h2>
+                </div>
+                
+                <div class="chat-container">
+                    <!-- Chat Configuration Section -->
+                    <div class="chat-config-section">
+                        <div class="chat-config-row">
+                            <div class="chat-provider-selection">
+                                <h3>Model Provider</h3>
+                                <div class="searchable-dropdown" id="chat-provider-dropdown">
+                                    <input type="text" class="dropdown-search" placeholder="Select provider..." autocomplete="off" readonly>
+                                    <div class="dropdown-arrow">▼</div>
+                                    <div class="dropdown-menu" id="chat-provider-menu"></div>
+                                </div>
+                                <div class="ollama-status-compact" id="ollama-status-compact" style="display: none;">
+                                    <span class="status-dot" id="ollama-status-dot"></span>
+                                    <span class="status-text" id="ollama-status-text">Checking...</span>
+                                    <button class="status-action-btn" id="ollama-refresh-btn" style="display: none;" title="Refresh models">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                    <button class="status-action-btn" id="ollama-action-btn" style="display: none;">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="chat-model-selection">
+                                <h3>Model Selection</h3>
+                                <div class="searchable-dropdown" id="chat-model-dropdown">
+                                    <input type="text" class="dropdown-search" placeholder="Search and select model..." autocomplete="off">
+                                    <div class="dropdown-arrow">▼</div>
+                                    <div class="dropdown-menu" id="chat-model-menu"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="chat-context-selection">
+                                <h3>Internet Context</h3>
+                                <div class="searchable-dropdown" id="chat-internet-dropdown">
+                                    <input type="text" class="dropdown-search" placeholder="Select internet context..." autocomplete="off" readonly>
+                                    <div class="dropdown-arrow">▼</div>
+                                    <div class="dropdown-menu" id="chat-internet-menu"></div>
+                                </div>
+                                <div class="provider-info" id="chat-provider-info" style="display: none;">
+                                    <div class="info-content" id="chat-provider-info-content"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- System Prompt Section for Chat -->
+                        <div class="chat-system-prompt-section">
+                            <div class="chat-system-prompt-header">
+                                <h3>System Prompt</h3>
+                                <div class="chat-system-prompt-actions">
+                                    <div class="searchable-dropdown" id="chat-system-prompt-dropdown">
+                                        <input type="text" class="dropdown-search" placeholder="Select system prompt..." autocomplete="off" readonly>
+                                        <div class="dropdown-arrow">▼</div>
+                                        <div class="dropdown-menu" id="chat-system-prompt-menu"></div>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" id="chat-edit-system-prompt-btn">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chat-system-prompt-preview" id="chat-system-prompt-preview">
+                                <!-- System prompt preview will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Messages Area -->
+                    <div class="chat-messages-section">
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="chat-welcome">
+                                <i class="fas fa-robot"></i>
+                                <h3>Welcome to Simple Chat</h3>
+                                <p>Select a model and start chatting!</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Input Section -->
+                    <div class="chat-input-section">
+                        <div class="chat-input-container">
+                            <textarea id="chat-message-input" class="chat-input" rows="3" 
+                                placeholder="Type your message here..." disabled></textarea>
+                            <button id="chat-send-btn" class="chat-send-btn" disabled>
+                                <i class="fas fa-paper-plane"></i>
+                                Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- My Prompts Tab -->
-            <div class="tab-content active" id="prompts-tab">
+            <div class="tab-content" id="prompts-tab">
                 <!-- Previous Prompts Section -->
                 <div class="previous-prompts-section">
                     <div class="section-header">
@@ -113,8 +214,12 @@
                                 <label for="internet-access-select">Search Provider:</label>
                                 <select id="internet-access-select" class="form-control">
                                     <option value="none">None</option>
-                                    <option value="tavily">Tavily</option>
+                                    <option value="tavily">Tavily (External API)</option>
+                                    <option value="openrouter">OpenRouter (Built-in Web Search)</option>
                                 </select>
+                            </div>
+                            <div class="provider-info" id="provider-info" style="display: none;">
+                                <div class="info-content" id="provider-info-content"></div>
                             </div>
                         </div>
                     </div>

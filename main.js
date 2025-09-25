@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn, exec } = require('child_process');
 
 let mainWindow;
 
@@ -208,4 +209,61 @@ ipcMain.handle('delete-prompt-session', async (event, sessionId) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// IPC handlers for Ollama integration
+ipcMain.handle('check-ollama-installation', async () => {
+  return new Promise((resolve) => {
+    exec('ollama --version', (error, stdout, stderr) => {
+      if (error) {
+        console.log('Ollama not installed:', error.message);
+        resolve({ success: false, error: 'Ollama not installed' });
+      } else {
+        console.log('Ollama version:', stdout.trim());
+        resolve({ success: true, version: stdout.trim() });
+      }
+    });
+  });
+});
+
+ipcMain.handle('start-ollama', async () => {
+  return new Promise((resolve) => {
+    // Try to start Ollama server
+    const ollamaProcess = spawn('ollama', ['serve'], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    
+    ollamaProcess.unref(); // Allow the parent process to exit independently
+    
+    // Give it a moment to start
+    setTimeout(() => {
+      resolve({ success: true, message: 'Ollama server started' });
+    }, 1000);
+    
+    ollamaProcess.on('error', (error) => {
+      console.error('Error starting Ollama:', error);
+      resolve({ success: false, error: error.message });
+    });
+  });
+});
+
+ipcMain.handle('stop-ollama', async () => {
+  return new Promise((resolve) => {
+    // On macOS/Linux, try to find and kill the ollama process
+    if (process.platform === 'win32') {
+      exec('taskkill /f /im ollama.exe', (error, stdout, stderr) => {
+        if (error) {
+          resolve({ success: false, error: error.message });
+        } else {
+          resolve({ success: true, message: 'Ollama server stopped' });
+        }
+      });
+    } else {
+      exec('pkill -f "ollama serve"', (error, stdout, stderr) => {
+        // pkill returns non-zero if no processes found, but that's okay
+        resolve({ success: true, message: 'Ollama server stopped' });
+      });
+    }
+  });
 });
