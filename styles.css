@@ -811,6 +811,8 @@ body {
 .settings-content {
     padding: 32px;
     max-width: 1200px;
+    overflow-y: auto;
+    height: calc(100vh - 120px);
 }
 
 .settings-grid {
@@ -1758,7 +1760,7 @@ body {
 
 .search-controls {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr 1fr auto;
     gap: 16px;
     align-items: flex-end;
     margin-top: 16px;
@@ -1771,6 +1773,46 @@ body {
 .search-controls button {
     height: 44px;
     padding: 0 32px;
+}
+
+.providers-checkboxes {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.provider-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: white;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+    font-weight: 500;
+    color: #475569;
+}
+
+.provider-option:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+}
+
+.provider-option:has(input:checked) {
+    border-color: #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    color: #667eea;
+}
+
+.provider-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #667eea;
+    margin: 0;
 }
 
 .search-results-section {
@@ -1907,8 +1949,45 @@ body {
     min-width: 300px;
     color: #475569;
     line-height: 1.6;
+    padding-right: 0;
+}
+
+.result-snippet-cell .snippet-scroll {
+    max-height: calc(1.6em * 6); /* 6 lines */
+    overflow-y: auto;
     white-space: pre-wrap;
     word-wrap: break-word;
+    padding-right: 8px;
+}
+
+/* Scrollbar styling for content cell */
+.result-snippet-cell .snippet-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.result-snippet-cell .snippet-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.result-snippet-cell .snippet-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.result-snippet-cell .snippet-scroll::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.rank-cell {
+    text-align: center;
+    font-weight: 600;
+    min-width: 80px;
+    font-size: 14px;
+}
+
+.rank-cell:not(:has(❌)) {
+    color: #667eea;
 }
 
 .search-loading {

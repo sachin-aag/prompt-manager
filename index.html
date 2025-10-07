@@ -36,7 +36,7 @@
                     </button>
                     <button class="nav-btn" data-tab="perplexity-search">
                         <i class="fas fa-search"></i>
-                        <span>Perplexity Search</span>
+                        <span>AI Search Comparison</span>
                     </button>
                     <button class="nav-btn" data-tab="settings">
                         <i class="fas fa-cog"></i>
@@ -324,10 +324,10 @@
                 </div>
             </div>
 
-            <!-- Perplexity Search Tab -->
+            <!-- AEO Comparison Tab -->
             <div class="tab-content" id="perplexity-search-tab">
                 <div class="content-header">
-                    <h2>Perplexity Search</h2>
+                    <h2>AEO Comparison</h2>
                 </div>
 
                 <div class="perplexity-search-container">
@@ -339,6 +339,15 @@
                         </div>
                         
                         <div class="search-controls">
+                            <div class="input-group">
+                                <label for="search-providers">Search Providers:</label>
+                                <div id="search-providers" class="providers-checkboxes">
+                                    <label class="provider-option"><input type="checkbox" value="perplexity" checked> Perplexity</label>
+                                    <label class="provider-option"><input type="checkbox" value="brave"> Brave</label>
+                                    <label class="provider-option"><input type="checkbox" value="tavily"> Tavily</label>
+                                    <label class="provider-option"><input type="checkbox" value="exa"> Exa</label>
+                                </div>
+                            </div>
                             <div class="input-group">
                                 <label for="perplexity-country">Country:</label>
                                 <select id="perplexity-country" class="form-control">
@@ -367,7 +376,7 @@
                             </div>
                             
                             <button class="btn btn-primary" id="perplexity-search-btn">
-                                <i class="fas fa-search"></i> Search
+                                <i class="fas fa-search"></i> Compare
                             </button>
                         </div>
                     </div>
@@ -421,6 +430,26 @@
                                         placeholder="Enter your Perplexity API key...">
                                 </div>
                                 <button class="btn btn-primary" id="save-perplexity-api-key">Save Perplexity API Key</button>
+                            </div>
+
+                            <div class="setting-group">
+                                <h3>Brave Search API</h3>
+                                <div class="input-group">
+                                    <label for="brave-api-key">API Key:</label>
+                                    <input type="password" id="brave-api-key" class="form-control" 
+                                        placeholder="Enter your Brave Search API key...">
+                                </div>
+                                <button class="btn btn-primary" id="save-brave-api-key">Save Brave API Key</button>
+                            </div>
+
+                            <div class="setting-group">
+                                <h3>Exa API</h3>
+                                <div class="input-group">
+                                    <label for="exa-api-key">API Key:</label>
+                                    <input type="password" id="exa-api-key" class="form-control" 
+                                        placeholder="Enter your Exa API key...">
+                                </div>
+                                <button class="btn btn-primary" id="save-exa-api-key">Save Exa API Key</button>
                             </div>
                         </div>
 

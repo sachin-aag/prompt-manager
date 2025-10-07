@@ -181,6 +181,8 @@ class PromptManager {
         this.tavilyApiKey = localStorage.getItem('tavily_api_key') || '';
         this.perplexityApiKey = localStorage.getItem('perplexity_api_key') || '';
         this.availableModels = [];
+        this.braveApiKey = localStorage.getItem('brave_api_key') || '';
+        this.exaApiKey = localStorage.getItem('exa_api_key') || '';
         this.modelDropdowns = [];
         this.currentSessionId = null;
         this.internetAccessProvider = 'none';
@@ -513,9 +515,15 @@ Always aim to be the most helpful and informative assistant possible while maint
             this.savePerplexityApiKey();
         });
 
+        const braveBtn = document.getElementById('save-brave-api-key');
+        if (braveBtn) braveBtn.addEventListener('click', () => this.saveBraveApiKey());
+
+        const exaBtn = document.getElementById('save-exa-api-key');
+        if (exaBtn) exaBtn.addEventListener('click', () => this.saveExaApiKey());
+
         // Perplexity Search
         document.getElementById('perplexity-search-btn').addEventListener('click', () => {
-            this.performPerplexitySearch();
+            this.performAeoComparison();
         });
 
         // Internet access dropdown
@@ -1736,6 +1744,299 @@ Always aim to be the most helpful and informative assistant possible while maint
         }, 1500);
     }
 
+    async saveBraveApiKey() {
+        const apiKey = document.getElementById('brave-api-key').value.trim();
+        if (!apiKey) {
+            alert('Please enter a Brave Search API key.');
+            return;
+        }
+        this.braveApiKey = apiKey;
+        localStorage.setItem('brave_api_key', apiKey);
+        const saveBtn = document.getElementById('save-brave-api-key');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        saveBtn.style.backgroundColor = '#10b981';
+        setTimeout(() => {
+            saveBtn.textContent = originalText;
+            saveBtn.style.backgroundColor = '';
+        }, 1500);
+    }
+
+    async saveExaApiKey() {
+        const apiKey = document.getElementById('exa-api-key').value.trim();
+        if (!apiKey) {
+            alert('Please enter an Exa API key.');
+            return;
+        }
+        this.exaApiKey = apiKey;
+        localStorage.setItem('exa_api_key', apiKey);
+        const saveBtn = document.getElementById('save-exa-api-key');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        saveBtn.style.backgroundColor = '#10b981';
+        setTimeout(() => {
+            saveBtn.textContent = originalText;
+            saveBtn.style.backgroundColor = '';
+        }, 1500);
+    }
+
+    getSelectedProviders() {
+        const container = document.getElementById('search-providers');
+        if (!container) return ['perplexity'];
+        const checked = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+            .map(i => i.value);
+        return checked.length ? checked : ['perplexity'];
+    }
+
+    async performAeoComparison() {
+        const query = document.getElementById('perplexity-query').value.trim();
+        const country = document.getElementById('perplexity-country').value;
+        if (!query) {
+            alert('Please enter a search query.');
+            return;
+        }
+
+        const providers = this.getSelectedProviders();
+        const resultsSection = document.getElementById('perplexity-results-section');
+        const resultsContainer = document.getElementById('perplexity-results');
+        const resultsCount = document.getElementById('perplexity-results-count');
+        resultsSection.style.display = 'block';
+        resultsContainer.innerHTML = `
+            <div class="search-loading">
+                <i class="fas fa-spinner"></i>
+                <p>Fetching results from: ${providers.join(', ')}</p>
+            </div>
+        `;
+
+        const providerCalls = [];
+        const warnings = [];
+        
+        if (providers.includes('perplexity')) {
+            if (!this.perplexityApiKey) {
+                warnings.push('Perplexity API key not configured');
+                providerCalls.push(Promise.resolve({ provider: 'perplexity', results: [] }));
+            } else {
+                providerCalls.push(this.searchPerplexity(query, country));
+            }
+        } else {
+            providerCalls.push(Promise.resolve({ provider: 'perplexity', results: [] }));
+        }
+
+        if (providers.includes('brave')) {
+            if (!this.braveApiKey) {
+                warnings.push('Brave API key not configured');
+                providerCalls.push(Promise.resolve({ provider: 'brave', results: [] }));
+            } else {
+                providerCalls.push(this.searchBrave(query, country));
+            }
+        } else {
+            providerCalls.push(Promise.resolve({ provider: 'brave', results: [] }));
+        }
+
+        if (providers.includes('tavily')) {
+            if (!this.tavilyApiKey) {
+                warnings.push('Tavily API key not configured');
+                providerCalls.push(Promise.resolve({ provider: 'tavily', results: [] }));
+            } else {
+                providerCalls.push(this.searchTavily(query));
+            }
+        } else {
+            providerCalls.push(Promise.resolve({ provider: 'tavily', results: [] }));
+        }
+
+        if (providers.includes('exa')) {
+            if (!this.exaApiKey) {
+                warnings.push('Exa API key not configured');
+                providerCalls.push(Promise.resolve({ provider: 'exa', results: [] }));
+            } else {
+                providerCalls.push(this.searchExa(query));
+            }
+        } else {
+            providerCalls.push(Promise.resolve({ provider: 'exa', results: [] }));
+        }
+
+        const providerResults = await Promise.all(providerCalls);
+        
+        // Add warning banner if some keys are missing
+        let warningHtml = '';
+        if (warnings.length > 0) {
+            warningHtml = `
+                <div class="search-warning" style="margin-bottom: 16px; padding: 12px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; color: #92400e;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Warning:</strong> ${warnings.join(', ')}. Results may be incomplete.
+                </div>
+            `;
+        }
+        
+        resultsContainer.innerHTML = warningHtml;
+        const tempDiv = document.createElement('div');
+        resultsContainer.appendChild(tempDiv);
+        this.renderAeoComparison(providerResults, tempDiv, resultsCount, providers);
+    }
+
+    async searchPerplexity(query, country) {
+        try {
+            const payload = {
+                query,
+                max_results: 10,
+                max_tokens_per_page: 256
+            };
+            if (country && country !== 'worldwide') payload.country = country;
+            const response = await axios.post('https://api.perplexity.ai/search', payload, {
+                headers: { 'Authorization': `Bearer ${this.perplexityApiKey}`, 'Content-Type': 'application/json' }
+            });
+            const results = (response.data?.results || []).map((r, i) => ({ title: r.title, url: r.url, snippet: r.snippet || '', rank: i + 1 }));
+            return { provider: 'perplexity', results };
+        } catch (error) {
+            console.error('Perplexity Search Error:', error.response?.data || error.message);
+            return { provider: 'perplexity', results: [] };
+        }
+    }
+
+    async searchBrave(query, country) {
+        try {
+            const params = new URLSearchParams({ q: query, count: '10' });
+            if (country && country !== 'worldwide') {
+                params.set('country', country.toLowerCase());
+            }
+            const resp = await axios.get(`https://api.search.brave.com/res/v1/web/search?${params.toString()}`, {
+                headers: { 
+                    'X-Subscription-Token': this.braveApiKey,
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip'
+                }
+            });
+            const items = resp.data?.web?.results || [];
+            const results = items.map((r, i) => ({ title: r.title, url: r.url, snippet: r.description || '', rank: i + 1 }));
+            return { provider: 'brave', results };
+        } catch (error) {
+            console.error('Brave Search Error:', error.response?.data || error.message);
+            // Return empty results instead of throwing to allow other providers to continue
+            return { provider: 'brave', results: [] };
+        }
+    }
+
+    async searchTavily(query) {
+        try {
+            const resp = await axios.post('https://api.tavily.com/search', {
+                api_key: this.tavilyApiKey,
+                query,
+                search_depth: 'basic',
+                include_answer: false,
+                include_raw_content: false,
+                max_results: 10
+            }, { headers: { 'Content-Type': 'application/json' }});
+            const items = resp.data?.results || [];
+            const results = items.map((r, i) => ({ title: r.title, url: r.url, snippet: r.content || '', rank: i + 1 }));
+            return { provider: 'tavily', results };
+        } catch (error) {
+            console.error('Tavily Search Error:', error.response?.data || error.message);
+            return { provider: 'tavily', results: [] };
+        }
+    }
+
+    async searchExa(query) {
+        try {
+            const resp = await axios.post('https://api.exa.ai/search', {
+                query,
+                numResults: 10
+            }, { headers: { 'x-api-key': this.exaApiKey, 'Content-Type': 'application/json' }});
+            const items = resp.data?.results || resp.data?.documents || [];
+            const results = items.map((r, i) => ({ title: r.title || r.url, url: r.url, snippet: r.text || r.snippet || '', rank: i + 1 }));
+            return { provider: 'exa', results };
+        } catch (error) {
+            console.error('Exa Search Error:', error.response?.data || error.message);
+            return { provider: 'exa', results: [] };
+        }
+    }
+
+    normalizeUrl(url) {
+        if (!url) return '';
+        try {
+            // Parse the URL
+            const urlObj = new URL(url);
+            
+            // Normalize: lowercase hostname, remove www, remove trailing slash, remove fragment
+            let normalized = urlObj.protocol + '//' + 
+                            urlObj.hostname.toLowerCase().replace(/^www\./, '') + 
+                            urlObj.pathname.replace(/\/$/, '') + 
+                            urlObj.search;
+            
+            return normalized;
+        } catch (e) {
+            // If URL parsing fails, return cleaned version
+            return url.toLowerCase().replace(/\/$/, '').replace(/#.*$/, '');
+        }
+    }
+
+    renderAeoComparison(providerResults, container, countElement, selected) {
+        const providerMap = {};
+        for (const pr of providerResults) providerMap[pr.provider] = pr.results;
+        const urlSet = new Map(); // normalized url -> row object
+
+        const addResults = (provider) => {
+            const list = providerMap[provider] || [];
+            list.forEach(item => {
+                if (!item.url) return;
+                
+                const normalizedUrl = this.normalizeUrl(item.url);
+                const key = normalizedUrl;
+                
+                if (!urlSet.has(key)) {
+                    urlSet.set(key, {
+                        title: item.title || item.url,
+                        url: item.url, // Keep original URL for display
+                        content: item.snippet || '',
+                        perplexity: '❌', exa: '❌', brave: '❌', tavily: '❌'
+                    });
+                }
+                const row = urlSet.get(key);
+                row[provider] = item.rank;
+                // Use content from the first selected provider present
+                if (!row.content && item.snippet) row.content = item.snippet;
+            });
+        };
+
+        ['perplexity','exa','brave','tavily'].forEach(addResults);
+
+        const rows = Array.from(urlSet.values());
+        countElement.textContent = `${rows.length} unique URLs`;
+
+        const tableRows = rows.map(r => `
+            <tr>
+                <td class="result-title-cell"><a href="${r.url}" target="_blank">${this.escapeHtml(r.title)}</a></td>
+                <td class="result-url-cell"><a href="${r.url}" target="_blank">${r.url}</a></td>
+                <td class="rank-cell">${typeof r.perplexity === 'number' ? r.perplexity : '❌'}</td>
+                <td class="rank-cell">${typeof r.exa === 'number' ? r.exa : '❌'}</td>
+                <td class="rank-cell">${typeof r.brave === 'number' ? r.brave : '❌'}</td>
+                <td class="rank-cell">${typeof r.tavily === 'number' ? r.tavily : '❌'}</td>
+                <td class="result-snippet-cell"><div class="snippet-scroll">${this.escapeHtml(r.content || '')}</div></td>
+            </tr>
+        `).join('');
+
+        const html = `
+            <div class="results-table-wrapper">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>URL</th>
+                            <th>Perplexity Rank</th>
+                            <th>Exa Rank</th>
+                            <th>Brave Rank</th>
+                            <th>Tavily Rank</th>
+                            <th>Content</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        container.innerHTML = html;
+    }
+
     async performPerplexitySearch() {
         const query = document.getElementById('perplexity-query').value.trim();
         const country = document.getElementById('perplexity-country').value;
@@ -1834,7 +2135,7 @@ Always aim to be the most helpful and informative assistant possible while maint
                     <td class="result-url-cell">
                         <a href="${url}" target="_blank" title="${url}">${url}</a>
                     </td>
-                    <td class="result-snippet-cell">${this.escapeHtml(snippet)}</td>
+                    <td class="result-snippet-cell"><div class="snippet-scroll">${this.escapeHtml(snippet)}</div></td>
                 </tr>
             `;
         }).join('');
@@ -1871,6 +2172,8 @@ Always aim to be the most helpful and informative assistant possible while maint
         const apiKeyInput = document.getElementById('api-key');
         const tavilyApiKeyInput = document.getElementById('tavily-api-key');
         const perplexityApiKeyInput = document.getElementById('perplexity-api-key');
+        const braveApiKeyInput = document.getElementById('brave-api-key');
+        const exaApiKeyInput = document.getElementById('exa-api-key');
 
         if (apiKeyInput && this.apiKey) {
             apiKeyInput.value = this.apiKey;
@@ -1880,6 +2183,12 @@ Always aim to be the most helpful and informative assistant possible while maint
         }
         if (perplexityApiKeyInput && this.perplexityApiKey) {
             perplexityApiKeyInput.value = this.perplexityApiKey;
+        }
+        if (braveApiKeyInput && this.braveApiKey) {
+            braveApiKeyInput.value = this.braveApiKey;
+        }
+        if (exaApiKeyInput && this.exaApiKey) {
+            exaApiKeyInput.value = this.exaApiKey;
         }
     }
 
