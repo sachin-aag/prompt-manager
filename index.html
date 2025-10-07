@@ -34,6 +34,10 @@
                         <i class="fas fa-cogs"></i>
                         <span>System Prompts</span>
                     </button>
+                    <button class="nav-btn" data-tab="perplexity-search">
+                        <i class="fas fa-search"></i>
+                        <span>Perplexity Search</span>
+                    </button>
                     <button class="nav-btn" data-tab="settings">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
@@ -320,6 +324,66 @@
                 </div>
             </div>
 
+            <!-- Perplexity Search Tab -->
+            <div class="tab-content" id="perplexity-search-tab">
+                <div class="content-header">
+                    <h2>Perplexity Search</h2>
+                </div>
+
+                <div class="perplexity-search-container">
+                    <div class="search-input-section">
+                        <div class="input-group">
+                            <label for="perplexity-query">Search Query:</label>
+                            <textarea id="perplexity-query" class="form-control" rows="3" 
+                                placeholder="Enter your search query..."></textarea>
+                        </div>
+                        
+                        <div class="search-controls">
+                            <div class="input-group">
+                                <label for="perplexity-country">Country:</label>
+                                <select id="perplexity-country" class="form-control">
+                                    <option value="worldwide">Worldwide (No Regional Filter)</option>
+                                    <option value="US">United States</option>
+                                    <option value="GB">United Kingdom</option>
+                                    <option value="CA">Canada</option>
+                                    <option value="AU">Australia</option>
+                                    <option value="DE">Germany</option>
+                                    <option value="FR">France</option>
+                                    <option value="ES">Spain</option>
+                                    <option value="IT">Italy</option>
+                                    <option value="JP">Japan</option>
+                                    <option value="CN">China</option>
+                                    <option value="IN">India</option>
+                                    <option value="BR">Brazil</option>
+                                    <option value="MX">Mexico</option>
+                                    <option value="RU">Russia</option>
+                                    <option value="KR">South Korea</option>
+                                    <option value="NL">Netherlands</option>
+                                    <option value="SE">Sweden</option>
+                                    <option value="NO">Norway</option>
+                                    <option value="DK">Denmark</option>
+                                    <option value="FI">Finland</option>
+                                </select>
+                            </div>
+                            
+                            <button class="btn btn-primary" id="perplexity-search-btn">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="search-results-section" id="perplexity-results-section" style="display: none;">
+                        <div class="results-header">
+                            <h3>Search Results</h3>
+                            <span class="results-count" id="perplexity-results-count"></span>
+                        </div>
+                        <div class="search-results" id="perplexity-results">
+                            <!-- Search results will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Settings Tab -->
             <div class="tab-content" id="settings-tab">
                 <div class="content-header">
@@ -347,6 +411,16 @@
                                         placeholder="Enter your Tavily API key...">
                                 </div>
                                 <button class="btn btn-primary" id="save-tavily-api-key">Save Tavily API Key</button>
+                            </div>
+
+                            <div class="setting-group">
+                                <h3>Perplexity API</h3>
+                                <div class="input-group">
+                                    <label for="perplexity-api-key">API Key:</label>
+                                    <input type="password" id="perplexity-api-key" class="form-control" 
+                                        placeholder="Enter your Perplexity API key...">
+                                </div>
+                                <button class="btn btn-primary" id="save-perplexity-api-key">Save Perplexity API Key</button>
                             </div>
                         </div>
 

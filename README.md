@@ -7,6 +7,7 @@ A powerful Electron desktop application for managing system prompts and comparin
 - **Prompt Management**: Create, edit, and organize system prompts and user prompts
 - **LLM Comparison**: Test prompts across multiple language models simultaneously
 - **OpenRouter Integration**: Seamless integration with OpenRouter API for accessing various LLMs
+- **Perplexity Search**: Integrated web search powered by Perplexity AI with regional filtering
 - **Side-by-Side Comparison**: View and compare outputs from different models in a clean interface
 - **Export/Import**: Save and load prompt configurations
 - **Modern UI**: Clean, responsive interface built with modern web technologies
@@ -46,7 +47,27 @@ npm start
 
 ### API Configuration
 
-The app uses OpenRouter API for accessing various language models. Make sure to configure your API key in the application settings.
+The app uses multiple APIs for different features:
+- **OpenRouter API**: For accessing various language models
+- **Tavily API**: For internet-enhanced LLM responses
+- **Perplexity API**: For web search functionality
+
+Configure your API keys in the Settings tab.
+
+### Perplexity Search
+
+The integrated Perplexity Search allows you to:
+1. Search the web directly from the application
+2. Filter results by country or search worldwide
+3. View top 10 search results with snippets, URLs, and metadata
+4. Access real-time information from Perplexity's continuously refreshed index
+
+To use Perplexity Search:
+1. Configure your Perplexity API key in Settings
+2. Navigate to the Perplexity Search tab
+3. Enter your search query
+4. Select a country (or choose "Worldwide" for non-regional search)
+5. Click Search to view results
 
 ## Development
 

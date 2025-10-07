@@ -179,6 +179,7 @@ class PromptManager {
         this.editingUserPromptId = null;
         this.apiKey = localStorage.getItem('openrouter_api_key') || '';
         this.tavilyApiKey = localStorage.getItem('tavily_api_key') || '';
+        this.perplexityApiKey = localStorage.getItem('perplexity_api_key') || '';
         this.availableModels = [];
         this.modelDropdowns = [];
         this.currentSessionId = null;
@@ -508,6 +509,15 @@ Always aim to be the most helpful and informative assistant possible while maint
             this.saveTavilyApiKey();
         });
 
+        document.getElementById('save-perplexity-api-key').addEventListener('click', () => {
+            this.savePerplexityApiKey();
+        });
+
+        // Perplexity Search
+        document.getElementById('perplexity-search-btn').addEventListener('click', () => {
+            this.performPerplexitySearch();
+        });
+
         // Internet access dropdown
         document.getElementById('internet-access-select').addEventListener('change', (e) => {
             this.internetAccessProvider = e.target.value;
@@ -649,6 +659,11 @@ Always aim to be the most helpful and informative assistant possible while maint
                 this.updateChatSystemPromptDropdown();
                 this.updateChatModelDropdown();
             }, 100);
+        }
+        
+        // Update settings tab if switching to it
+        if (tabName === 'settings') {
+            this.loadSettingsValues();
         }
     }
 
@@ -1697,6 +1712,175 @@ Always aim to be the most helpful and informative assistant possible while maint
             saveBtn.textContent = originalText;
             saveBtn.style.backgroundColor = '';
         }, 1500);
+    }
+
+    async savePerplexityApiKey() {
+        const apiKey = document.getElementById('perplexity-api-key').value.trim();
+        if (!apiKey) {
+            alert('Please enter a Perplexity API key.');
+            return;
+        }
+
+        this.perplexityApiKey = apiKey;
+        localStorage.setItem('perplexity_api_key', apiKey);
+        
+        // Show success message
+        const saveBtn = document.getElementById('save-perplexity-api-key');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        saveBtn.style.backgroundColor = '#10b981';
+        
+        setTimeout(() => {
+            saveBtn.textContent = originalText;
+            saveBtn.style.backgroundColor = '';
+        }, 1500);
+    }
+
+    async performPerplexitySearch() {
+        const query = document.getElementById('perplexity-query').value.trim();
+        const country = document.getElementById('perplexity-country').value;
+        
+        if (!query) {
+            alert('Please enter a search query.');
+            return;
+        }
+
+        if (!this.perplexityApiKey) {
+            alert('Please configure your Perplexity API key in Settings first.');
+            return;
+        }
+
+        const resultsSection = document.getElementById('perplexity-results-section');
+        const resultsContainer = document.getElementById('perplexity-results');
+        const resultsCount = document.getElementById('perplexity-results-count');
+
+        // Show loading state
+        resultsSection.style.display = 'block';
+        resultsContainer.innerHTML = `
+            <div class="search-loading">
+                <i class="fas fa-spinner"></i>
+                <p>Searching...</p>
+            </div>
+        `;
+
+        try {
+            // Build the request payload
+            const payload = {
+                query: query,
+                max_results: 10,
+                max_tokens_per_page: 256
+            };
+
+            // Only add country if not worldwide
+            if (country !== 'worldwide') {
+                payload.country = country;
+            }
+
+            const response = await axios.post(
+                'https://api.perplexity.ai/search',
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.perplexityApiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Display results
+            this.displayPerplexityResults(response.data.results, resultsContainer, resultsCount);
+        } catch (error) {
+            console.error('Perplexity Search Error:', error);
+            resultsContainer.innerHTML = `
+                <div class="search-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <div>
+                        <strong>Search Error</strong>
+                        <p>${error.response?.data?.message || error.message || 'Failed to perform search. Please check your API key and try again.'}</p>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    displayPerplexityResults(results, container, countElement) {
+        if (!results || results.length === 0) {
+            container.innerHTML = `
+                <div class="search-error">
+                    <i class="fas fa-info-circle"></i>
+                    <div>
+                        <strong>No Results</strong>
+                        <p>No search results found. Try a different query.</p>
+                    </div>
+                </div>
+            `;
+            countElement.textContent = '0 results';
+            return;
+        }
+
+        countElement.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+
+        const tableRows = results.map((result, index) => {
+            const snippet = result.snippet || 'No preview available';
+            const title = result.title || 'Untitled';
+            const url = result.url || '';
+
+            return `
+                <tr>
+                    <td class="result-number-cell">${index + 1}</td>
+                    <td class="result-title-cell">
+                        <a href="${url}" target="_blank" title="${this.escapeHtml(title)}">${this.escapeHtml(title)}</a>
+                    </td>
+                    <td class="result-url-cell">
+                        <a href="${url}" target="_blank" title="${url}">${url}</a>
+                    </td>
+                    <td class="result-snippet-cell">${this.escapeHtml(snippet)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const tableHTML = `
+            <div class="results-table-wrapper">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Title</th>
+                            <th>URL</th>
+                            <th>Content</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = tableHTML;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    loadSettingsValues() {
+        // Load API keys from localStorage and populate the input fields
+        const apiKeyInput = document.getElementById('api-key');
+        const tavilyApiKeyInput = document.getElementById('tavily-api-key');
+        const perplexityApiKeyInput = document.getElementById('perplexity-api-key');
+
+        if (apiKeyInput && this.apiKey) {
+            apiKeyInput.value = this.apiKey;
+        }
+        if (tavilyApiKeyInput && this.tavilyApiKey) {
+            tavilyApiKeyInput.value = this.tavilyApiKey;
+        }
+        if (perplexityApiKeyInput && this.perplexityApiKey) {
+            perplexityApiKeyInput.value = this.perplexityApiKey;
+        }
     }
 
     async fetchInternetContext(query) {
