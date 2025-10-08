@@ -1,0 +1,176 @@
+// SearchableDropdown - Reusable dropdown component with search functionality
+
+class SearchableDropdown {
+    constructor(containerId, options = {}) {
+        this.container = document.getElementById(containerId);
+        if (!this.container) {
+            console.error(`SearchableDropdown: Container with id '${containerId}' not found`);
+            return;
+        }
+        
+        this.searchInput = this.container.querySelector('.dropdown-search');
+        this.menu = this.container.querySelector('.dropdown-menu');
+        this.arrow = this.container.querySelector('.dropdown-arrow');
+        this.options = [];
+        this.filteredOptions = [];
+        this.selectedValue = '';
+        this.selectedIndex = -1;
+        this.isOpen = false;
+        
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Search input events
+        this.searchInput.addEventListener('input', (e) => {
+            this.filterOptions(e.target.value);
+            this.open();
+        });
+
+        this.searchInput.addEventListener('focus', () => {
+            this.open();
+        });
+
+        this.searchInput.addEventListener('keydown', (e) => {
+            this.handleKeydown(e);
+        });
+
+        // Click outside to close
+        document.addEventListener('click', (e) => {
+            if (!this.container.contains(e.target)) {
+                this.close();
+            }
+        });
+    }
+
+    setOptions(options) {
+        this.options = options;
+        this.filteredOptions = [...options];
+        this.renderOptions();
+    }
+
+    filterOptions(searchTerm) {
+        const term = searchTerm.toLowerCase();
+        this.filteredOptions = this.options.filter(option => 
+            option.name.toLowerCase().includes(term)
+        );
+        this.selectedIndex = -1;
+        this.renderOptions();
+    }
+
+    renderOptions() {
+        this.menu.innerHTML = '';
+        
+        if (this.filteredOptions.length === 0) {
+            const noResults = document.createElement('div');
+            noResults.className = 'dropdown-no-results';
+            noResults.textContent = 'No models found';
+            this.menu.appendChild(noResults);
+            return;
+        }
+
+        this.filteredOptions.forEach((option, index) => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.textContent = option.name;
+            item.dataset.value = option.id;
+            
+            if (option.id === this.selectedValue) {
+                item.classList.add('selected');
+            }
+            
+            item.addEventListener('click', () => {
+                this.selectOption(option);
+            });
+            
+            this.menu.appendChild(item);
+        });
+    }
+
+    selectOption(option) {
+        this.selectedValue = option.id;
+        this.searchInput.value = option.name;
+        this.close();
+        this.onChange && this.onChange(option);
+    }
+
+    handleKeydown(e) {
+        if (!this.isOpen) {
+            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                this.open();
+                e.preventDefault();
+            }
+            return;
+        }
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                this.selectedIndex = Math.min(this.selectedIndex + 1, this.filteredOptions.length - 1);
+                this.updateHighlight();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
+                this.updateHighlight();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (this.selectedIndex >= 0 && this.filteredOptions[this.selectedIndex]) {
+                    this.selectOption(this.filteredOptions[this.selectedIndex]);
+                }
+                break;
+            case 'Escape':
+                this.close();
+                break;
+        }
+    }
+
+    updateHighlight() {
+        const items = this.menu.querySelectorAll('.dropdown-item');
+        items.forEach((item, index) => {
+            item.classList.remove('highlighted');
+            if (index === this.selectedIndex) {
+                item.classList.add('highlighted');
+                item.scrollIntoView({ block: 'nearest' });
+            }
+        });
+    }
+
+    open() {
+        this.isOpen = true;
+        this.container.classList.add('open');
+        this.renderOptions();
+    }
+
+    close() {
+        this.isOpen = false;
+        this.container.classList.remove('open');
+        this.selectedIndex = -1;
+    }
+
+    getValue() {
+        return this.selectedValue;
+    }
+
+    setValue(value) {
+        const option = this.options.find(opt => opt.id === value);
+        if (option) {
+            this.selectedValue = value;
+            this.searchInput.value = option.name;
+        }
+    }
+
+    clear() {
+        this.selectedValue = '';
+        this.searchInput.value = '';
+        this.close();
+    }
+}
+
+module.exports = SearchableDropdown;
+
