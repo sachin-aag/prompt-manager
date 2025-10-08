@@ -207,13 +207,16 @@ class UIController {
      */
     async loadInitialData() {
         // Load API keys into form fields
-        const keys = this.app.storage.getApiKey ? {
-            openrouter: this.app.storage.getApiKey('openrouter'),
-            tavily: this.app.storage.getApiKey('tavily'),
-            perplexity: this.app.storage.getApiKey('perplexity'),
-            brave: this.app.storage.getApiKey('brave'),
-            exa: this.app.storage.getApiKey('exa')
-        } : {};
+        let keys = {};
+        if (this.app.storage && typeof this.app.storage.getApiKey === 'function') {
+            keys = {
+                openrouter: this.app.storage.getApiKey('openrouter'),
+                tavily: this.app.storage.getApiKey('tavily'),
+                perplexity: this.app.storage.getApiKey('perplexity'),
+                brave: this.app.storage.getApiKey('brave'),
+                exa: this.app.storage.getApiKey('exa')
+            };
+        }
 
         document.getElementById('api-key')?.setAttribute('value', keys.openrouter || '');
         document.getElementById('tavily-api-key')?.setAttribute('value', keys.tavily || '');
