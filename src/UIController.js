@@ -1,6 +1,7 @@
 // UIController - Handles all DOM interactions and UI updates
 const SearchableDropdown = require('./components/SearchableDropdown');
 const { formatCost, formatCategoryName, escapeHtml } = require('./utils/formatting');
+const { fileToBase64, validateImageFile, isVisionModel } = require('./utils/imageUtils');
 
 class UIController {
     constructor(app) {
@@ -13,6 +14,10 @@ class UIController {
         this.currentEditingPromptId = null;
         this.currentEditingUserPromptId = null;
         this.currentSessionId = null;
+        
+        // Image handling
+        this.chatImages = [];
+        this.comparisonImages = [];
     }
 
     /**
@@ -174,6 +179,14 @@ class UIController {
         document.getElementById('edit-system-prompt-btn')?.addEventListener('click', () => this.openSystemPromptEditor());
         document.getElementById('save-system-prompt')?.addEventListener('click', () => this.saveSystemPrompt());
         document.getElementById('internet-access-select')?.addEventListener('change', (e) => this.onInternetAccessChanged(e.target.value));
+        
+        // Image upload listeners for comparison
+        document.getElementById('comparison-image-upload-btn')?.addEventListener('click', () => {
+            document.getElementById('comparison-image-upload')?.click();
+        });
+        document.getElementById('comparison-image-upload')?.addEventListener('change', (e) => {
+            this.handleComparisonImageUpload(e);
+        });
     }
 
     setupChatListeners() {
@@ -183,6 +196,14 @@ class UIController {
                 e.preventDefault();
                 this.sendChatMessage();
             }
+        });
+        
+        // Image upload listeners for chat
+        document.getElementById('chat-image-upload-btn')?.addEventListener('click', () => {
+            document.getElementById('chat-image-upload')?.click();
+        });
+        document.getElementById('chat-image-upload')?.addEventListener('change', (e) => {
+            this.handleChatImageUpload(e);
         });
     }
 
@@ -492,6 +513,19 @@ class UIController {
             return;
         }
 
+        // Check if any selected model doesn't support vision when images are present
+        if (this.comparisonImages.length > 0) {
+            const nonVisionModels = selectedModels.filter(model => !isVisionModel(model.id, 'openrouter'));
+            
+            if (nonVisionModels.length > 0) {
+                const modelNames = nonVisionModels.map(m => m.name).join(', ');
+                this.showImageError('comparison',
+                    `⚠️ The following selected model(s) do not support image inputs: ${modelNames}. Please select vision-capable models (e.g., GPT-4 Vision, Claude 3, Gemini) or remove the images to continue.`
+                );
+                return;
+            }
+        }
+
         // Set internet provider
         const internetProvider = document.getElementById('internet-access-select')?.value || 'none';
         this.app.comparisonManager.setInternetProvider(internetProvider);
@@ -501,7 +535,8 @@ class UIController {
             selectedModels,
             systemPrompt,
             userMessage,
-            (slot, status, data) => this.onComparisonProgress(slot, status, data)
+            (slot, status, data) => this.onComparisonProgress(slot, status, data),
+            this.comparisonImages
         );
 
         // Wait and fetch cost data
@@ -520,6 +555,9 @@ class UIController {
         if (responses.length > 0) {
             await this.app.promptSessionManager.create(systemPrompt, userMessage, responses);
         }
+        
+        // Clear images after successful comparison
+        this.clearComparisonImages();
     }
 
     /**
@@ -585,6 +623,19 @@ class UIController {
 
         if (!message) return;
 
+        // Check if model supports vision when images are present
+        if (this.chatImages.length > 0) {
+            const modelId = this.app.chatManager.selectedModel?.id;
+            const provider = this.app.chatManager.provider;
+            
+            if (!isVisionModel(modelId, provider)) {
+                this.showImageError('chat', 
+                    `⚠️ The selected model "${this.app.chatManager.selectedModel?.name}" does not support image inputs. Please select a vision-capable model (e.g., GPT-4 Vision, Claude 3, Gemini, LLaVA) or remove the images to continue.`
+                );
+                return;
+            }
+        }
+
         const systemPrompt = this.app.systemPromptManager.get(this.app.chatManager.systemPromptCategory);
 
         // Add user message to UI
@@ -595,9 +646,12 @@ class UIController {
         const loadingEl = this.addChatLoadingMessage();
 
         try {
-            const response = await this.app.chatManager.sendMessage(message, systemPrompt);
+            const response = await this.app.chatManager.sendMessage(message, systemPrompt, this.chatImages);
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', response.content, response.usage);
+            
+            // Clear images after successful send
+            this.clearChatImages();
         } catch (error) {
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', `Error: ${error.message}`, null, true);
@@ -1026,6 +1080,202 @@ class UIController {
 
         html += '</tbody></table>';
         container.innerHTML = html;
+    }
+
+    /**
+     * Handle chat image upload
+     */
+    async handleChatImageUpload(event) {
+        const files = Array.from(event.target.files || []);
+        
+        for (const file of files) {
+            const validation = validateImageFile(file);
+            
+            if (!validation.valid) {
+                this.showImageError('chat', validation.error);
+                continue;
+            }
+            
+            try {
+                const base64 = await fileToBase64(file);
+                this.chatImages.push(base64);
+                this.renderChatImagePreviews();
+            } catch (error) {
+                this.showImageError('chat', `Failed to process ${file.name}: ${error.message}`);
+            }
+        }
+        
+        // Reset file input
+        event.target.value = '';
+    }
+
+    /**
+     * Handle comparison image upload
+     */
+    async handleComparisonImageUpload(event) {
+        const files = Array.from(event.target.files || []);
+        
+        for (const file of files) {
+            const validation = validateImageFile(file);
+            
+            if (!validation.valid) {
+                this.showImageError('comparison', validation.error);
+                continue;
+            }
+            
+            try {
+                const base64 = await fileToBase64(file);
+                this.comparisonImages.push(base64);
+                this.renderComparisonImagePreviews();
+            } catch (error) {
+                this.showImageError('comparison', `Failed to process ${file.name}: ${error.message}`);
+            }
+        }
+        
+        // Reset file input
+        event.target.value = '';
+    }
+
+    /**
+     * Render chat image previews
+     */
+    renderChatImagePreviews() {
+        const container = document.getElementById('chat-image-previews');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        this.chatImages.forEach((image, index) => {
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'image-preview-item';
+            
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `Image ${index + 1}`;
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'image-preview-remove';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+            removeBtn.title = 'Remove image';
+            removeBtn.onclick = () => this.removeChatImage(index);
+            
+            const fileName = document.createElement('div');
+            fileName.className = 'image-preview-name';
+            fileName.textContent = `Image ${index + 1}`;
+            
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(removeBtn);
+            previewDiv.appendChild(fileName);
+            
+            container.appendChild(previewDiv);
+        });
+    }
+
+    /**
+     * Render comparison image previews
+     */
+    renderComparisonImagePreviews() {
+        const container = document.getElementById('comparison-image-previews');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        this.comparisonImages.forEach((image, index) => {
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'image-preview-item';
+            
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `Image ${index + 1}`;
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'image-preview-remove';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+            removeBtn.title = 'Remove image';
+            removeBtn.onclick = () => this.removeComparisonImage(index);
+            
+            const fileName = document.createElement('div');
+            fileName.className = 'image-preview-name';
+            fileName.textContent = `Image ${index + 1}`;
+            
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(removeBtn);
+            previewDiv.appendChild(fileName);
+            
+            container.appendChild(previewDiv);
+        });
+    }
+
+    /**
+     * Remove chat image
+     */
+    removeChatImage(index) {
+        this.chatImages.splice(index, 1);
+        this.renderChatImagePreviews();
+        this.hideImageError('chat');
+    }
+
+    /**
+     * Remove comparison image
+     */
+    removeComparisonImage(index) {
+        this.comparisonImages.splice(index, 1);
+        this.renderComparisonImagePreviews();
+        this.hideImageError('comparison');
+    }
+
+    /**
+     * Clear all chat images
+     */
+    clearChatImages() {
+        this.chatImages = [];
+        this.renderChatImagePreviews();
+        this.hideImageError('chat');
+    }
+
+    /**
+     * Clear all comparison images
+     */
+    clearComparisonImages() {
+        this.comparisonImages = [];
+        this.renderComparisonImagePreviews();
+        this.hideImageError('comparison');
+    }
+
+    /**
+     * Show image error message
+     */
+    showImageError(context, message) {
+        const containerId = context === 'chat' ? 'chat-image-previews' : 'comparison-image-previews';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Remove existing error
+        const existingError = container.querySelector('.image-upload-error');
+        if (existingError) {
+            existingError.remove();
+        }
+        
+        // Add new error
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'image-upload-error';
+        errorDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i><span>${escapeHtml(message)}</span>`;
+        
+        container.parentElement.insertBefore(errorDiv, container.nextSibling);
+    }
+
+    /**
+     * Hide image error message
+     */
+    hideImageError(context) {
+        const containerId = context === 'chat' ? 'chat-image-previews' : 'comparison-image-previews';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        const error = container.parentElement.querySelector('.image-upload-error');
+        if (error) {
+            error.remove();
+        }
     }
 }
 

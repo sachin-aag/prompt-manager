@@ -2053,3 +2053,132 @@ body {
         min-width: 150px;
     }
 }
+
+/* ===========================
+   Image Upload Components
+   =========================== */
+
+.image-upload-section {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.image-previews-container {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.image-preview-item {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f9fafb;
+    display: flex;
+    flex-direction: column;
+}
+
+.image-preview-item img {
+    width: 100%;
+    height: 90px;
+    object-fit: cover;
+}
+
+.image-preview-item .image-preview-name {
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+.image-preview-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(220, 38, 38, 0.9);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.image-preview-remove:hover {
+    background: rgba(185, 28, 28, 1);
+    transform: scale(1.1);
+}
+
+.image-upload-error {
+    padding: 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    color: #dc2626;
+    font-size: 13px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.image-upload-error i {
+    font-size: 16px;
+}
+
+.vision-model-warning {
+    padding: 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #d97706;
+    font-size: 13px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vision-model-warning i {
+    font-size: 16px;
+}
+
+/* Chat input section specific styles */
+.chat-input-section .image-upload-section {
+    padding: 12px 16px;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+/* Comparison input section specific styles */
+.user-input-section .image-upload-section {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+    .image-preview-item {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .image-preview-item img {
+        height: 75px;
+    }
+}

@@ -134,6 +134,13 @@
                     
                     <!-- Chat Input Section -->
                     <div class="chat-input-section">
+                        <div class="image-upload-section">
+                            <input type="file" id="chat-image-upload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" multiple style="display: none;">
+                            <button id="chat-image-upload-btn" class="btn btn-secondary btn-sm" title="Upload images">
+                                <i class="fas fa-image"></i> Add Images
+                            </button>
+                            <div id="chat-image-previews" class="image-previews-container"></div>
+                        </div>
                         <div class="chat-input-container">
                             <textarea id="chat-message-input" class="chat-input" rows="3" 
                                 placeholder="Type your message here..." disabled></textarea>
@@ -295,6 +302,13 @@
                     <div class="user-input-section">
                         <div class="input-group">
                             <label for="user-message">Enter your prompt:</label>
+                            <div class="image-upload-section">
+                                <input type="file" id="comparison-image-upload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" multiple style="display: none;">
+                                <button id="comparison-image-upload-btn" class="btn btn-secondary btn-sm" title="Upload images">
+                                    <i class="fas fa-image"></i> Add Images
+                                </button>
+                                <div id="comparison-image-previews" class="image-previews-container"></div>
+                            </div>
                             <textarea id="user-message" class="form-control" rows="3" 
                                 placeholder="Enter your message to send to the selected models..."></textarea>
                         </div>
