@@ -1,7 +1,7 @@
 // OpenRouterAPI - Handle OpenRouter API calls
 const axios = require('axios');
-const CONFIG = require('../constants/config');
-const { estimateTokens } = require('../utils/formatting');
+const CONFIG = require('../../constants/config');
+const { estimateTokens } = require('../../utils/formatting');
 
 class OpenRouterAPI {
     constructor(apiKey) {

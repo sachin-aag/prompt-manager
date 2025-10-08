@@ -1,8 +1,8 @@
 // OllamaAPI - Handle Ollama local API calls
 const axios = require('axios');
 const { ipcRenderer } = require('electron');
-const CONFIG = require('../constants/config');
-const { estimateTokens } = require('../utils/formatting');
+const CONFIG = require('../../constants/config');
+const { estimateTokens } = require('../../utils/formatting');
 
 class OllamaAPI {
     constructor() {
