@@ -40,16 +40,18 @@ class PromptSessionManager {
      * @param {string} systemPrompt - System prompt used
      * @param {string} userPrompt - User prompt
      * @param {Array} responses - Model responses
+     * @param {Array} images - Optional array of image data URLs
      * @returns {object} Created session
      */
-    async create(systemPrompt, userPrompt, responses) {
+    async create(systemPrompt, userPrompt, responses, images = []) {
         const session = {
             id: Date.now().toString(),
             timestamp: new Date().toISOString(),
             systemPrompt,
             userPrompt,
             responses,
-            models: responses.map(r => r.model)
+            models: responses.map(r => r.model),
+            images: images || []
         };
         
         await this.storageService.savePromptSession(session);
@@ -63,9 +65,10 @@ class PromptSessionManager {
      * @param {string} systemPrompt - System prompt used
      * @param {string} userPrompt - User prompt (can be updated to reflect full conversation)
      * @param {Array} responses - Model responses
+     * @param {Array} images - Optional array of image data URLs
      * @returns {object|null} Updated session or null if not found
      */
-    async update(id, systemPrompt, userPrompt, responses) {
+    async update(id, systemPrompt, userPrompt, responses, images = null) {
         const sessionIndex = this.sessions.findIndex(s => s.id === id);
         if (sessionIndex === -1) return null;
         
@@ -77,6 +80,11 @@ class PromptSessionManager {
             models: responses.map(r => r.model),
             timestamp: this.sessions[sessionIndex].timestamp // Keep original timestamp
         };
+        
+        // Update images if provided, otherwise keep existing
+        if (images !== null) {
+            updatedSession.images = images;
+        }
         
         await this.storageService.savePromptSession(updatedSession);
         this.sessions[sessionIndex] = updatedSession;

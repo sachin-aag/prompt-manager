@@ -1203,6 +1203,19 @@ body {
     overflow-y: auto;
 }
 
+/* Remove styling constraints when session-user-prompt has custom layout */
+#session-user-prompt:has(.session-user-section),
+#session-user-prompt:has(.session-content-wrapper),
+#session-user-prompt:has(.chat-conversation) {
+    background: transparent;
+    border: none;
+    padding: 0;
+    white-space: normal;
+    max-height: none;
+    overflow-y: visible;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 .responses-section h4 {
     margin: 0 0 1rem 0;
     color: var(--text-primary);
@@ -1216,11 +1229,23 @@ body {
     gap: 1rem;
 }
 
+/* Responses in session modal - stacked vertically */
+#session-responses.responses-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
 .response-item {
-    background: var(--bg-secondary);
+    background: #f1f5f9;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
     padding: 1rem;
+    margin-top: 0;
+    max-width: 600px;
+    border-left: 3px solid #667eea;
 }
 
 .response-header {
@@ -1315,6 +1340,65 @@ body {
     color: var(--text-secondary);
     font-size: 0.85rem;
     font-weight: 500;
+}
+
+/* Session content wrapper */
+.session-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* User section (images + prompt) on the right */
+.session-user-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+/* Session images on the right */
+.session-images-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    background: #e0e7ff;
+    border-radius: 12px;
+    max-width: 400px;
+    border-bottom-right-radius: 4px;
+}
+
+.session-image {
+    width: 100%;
+    max-width: 350px;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+    background: white;
+}
+
+.session-image:hover {
+    transform: scale(1.02);
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+/* User prompt on the right (below images) */
+.session-user-prompt-right {
+    background: #e0e7ff;
+    padding: 1rem;
+    border-radius: 12px;
+    border-bottom-right-radius: 4px;
+    max-width: 400px;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    color: #1e293b;
+    align-self: flex-end;
 }
 
 /* Empty state */

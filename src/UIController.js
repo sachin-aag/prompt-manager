@@ -554,7 +554,12 @@ class UIController {
         }));
 
         if (responses.length > 0) {
-            await this.app.promptSessionManager.create(systemPrompt, userMessage, responses);
+            await this.app.promptSessionManager.create(
+                systemPrompt, 
+                userMessage, 
+                responses, 
+                this.comparisonImages
+            );
         }
         
         // Clear images after successful comparison
@@ -717,13 +722,23 @@ class UIController {
                 }
             }));
             
+            // Collect images from the first message that had images (usually only the first message has them)
+            const sessionImages = [];
+            for (const msg of chatHistory) {
+                if (msg.images && msg.images.length > 0) {
+                    sessionImages.push(...msg.images);
+                    break; // Only get images from first message with images
+                }
+            }
+            
             if (sessionId) {
                 // Update existing session
                 await this.app.promptSessionManager.update(
                     sessionId,
                     systemPrompt,
                     conversationText,
-                    responses
+                    responses,
+                    sessionImages
                 );
                 console.log('Chat session updated in prompt history');
             } else {
@@ -731,7 +746,8 @@ class UIController {
                 const session = await this.app.promptSessionManager.create(
                     systemPrompt,
                     conversationText,
-                    responses
+                    responses,
+                    sessionImages
                 );
                 this.app.chatManager.setCurrentSessionId(session.id);
                 console.log('New chat session created in prompt history');
@@ -1055,9 +1071,24 @@ class UIController {
         // Check if this is a chat conversation (userPrompt contains "User:" and "Assistant:")
         const isChatConversation = session.userPrompt.includes('User:') && session.userPrompt.includes('Assistant:');
         
+        // Display images if present (on the right side)
+        let imagesHtml = '';
+        if (session.images && session.images.length > 0) {
+            imagesHtml = '<div class="session-images-right">';
+            session.images.forEach((img, index) => {
+                imagesHtml += `<img src="${img}" alt="Image ${index + 1}" class="session-image" />`;
+            });
+            imagesHtml += '</div>';
+        }
+        
         if (isChatConversation) {
-            // Display as a conversation
-            document.getElementById('session-user-prompt').innerHTML = this.formatChatConversation(session.userPrompt);
+            // Display as a conversation with images at the top right
+            let conversationHtml = '';
+            if (imagesHtml) {
+                conversationHtml += '<div class="session-user-section">' + imagesHtml + '</div>';
+            }
+            conversationHtml += this.formatChatConversation(session.userPrompt);
+            document.getElementById('session-user-prompt').innerHTML = conversationHtml;
             
             // For chat conversations, show total cost summary
             const responsesContainer = document.getElementById('session-responses');
@@ -1080,8 +1111,18 @@ class UIController {
                 `;
             }
         } else {
-            // Display as traditional prompt/response
-            document.getElementById('session-user-prompt').textContent = session.userPrompt;
+            // Display as traditional prompt/response with images on the right
+            if (imagesHtml) {
+                let userPromptHtml = '<div class="session-content-wrapper">';
+                userPromptHtml += '<div class="session-user-section">';
+                userPromptHtml += imagesHtml;
+                userPromptHtml += `<div class="session-user-prompt-right">${escapeHtml(session.userPrompt)}</div>`;
+                userPromptHtml += '</div>';
+                userPromptHtml += '</div>';
+                document.getElementById('session-user-prompt').innerHTML = userPromptHtml;
+            } else {
+                document.getElementById('session-user-prompt').textContent = session.userPrompt;
+            }
             
             // Render responses
             const responsesContainer = document.getElementById('session-responses');
