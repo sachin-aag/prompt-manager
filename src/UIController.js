@@ -187,6 +187,14 @@ class UIController {
         document.getElementById('comparison-image-upload')?.addEventListener('change', (e) => {
             this.handleComparisonImageUpload(e);
         });
+        
+        // Vision filter for comparison
+        document.getElementById('comparison-vision-filter')?.addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            this.modelDropdowns.forEach(dropdown => {
+                dropdown.setVisionFilter(enabled);
+            });
+        });
     }
 
     setupChatListeners() {
@@ -351,7 +359,8 @@ class UIController {
         const models = this.app.settingsManager.getAvailableModels();
         const options = models.map(m => ({
             id: m.id,
-            name: m.name || m.id
+            name: m.name || m.id,
+            supportsVision: m.supportsVision || false
         }));
 
         this.modelDropdowns.forEach(dropdown => {
@@ -374,7 +383,8 @@ class UIController {
 
         const options = models.map(m => ({
             id: m.id,
-            name: m.name || m.id
+            name: m.name || m.id,
+            supportsVision: m.supportsVision || false
         }));
 
         this.chatModelDropdown?.setOptions(options);
@@ -519,7 +529,14 @@ class UIController {
 
         // Check if any selected model doesn't support vision when images are present
         if (this.comparisonImages.length > 0) {
-            const nonVisionModels = selectedModels.filter(model => !isVisionModel(model.id, 'openrouter'));
+            // Get all available models to check their vision support
+            const allModels = this.app.settingsManager.getAvailableModels();
+            const modelVisionMap = new Map(allModels.map(m => [m.id, m.supportsVision]));
+            
+            const nonVisionModels = selectedModels.filter(model => {
+                const supportsVision = modelVisionMap.get(model.id);
+                return !supportsVision;
+            });
             
             if (nonVisionModels.length > 0) {
                 const modelNames = nonVisionModels.map(m => m.name).join(', ');
@@ -634,12 +651,11 @@ class UIController {
 
         // Check if model supports vision when images are present
         if (this.chatImages.length > 0) {
-            const modelId = this.app.chatManager.selectedModel?.id;
-            const provider = this.app.chatManager.provider;
+            const selectedModel = this.app.chatManager.selectedModel;
             
-            if (!isVisionModel(modelId, provider)) {
+            if (!selectedModel?.supportsVision) {
                 this.showImageError('chat', 
-                    `⚠️ The selected model "${this.app.chatManager.selectedModel?.name}" does not support image inputs. Please select a vision-capable model (e.g., GPT-4 Vision, Claude 3, Gemini, LLaVA) or remove the images to continue.`
+                    `⚠️ The selected model "${selectedModel?.name}" does not support image inputs. Please select a vision-capable model (e.g., GPT-4 Vision, Claude 3, Gemini, LLaVA) or remove the images to continue.`
                 );
                 return;
             }
@@ -1467,8 +1483,8 @@ class UIController {
         const container = document.getElementById(containerId);
         if (!container) return;
         
-        // Remove existing error
-        const existingError = container.querySelector('.image-upload-error');
+        // Remove existing error - look in parent element since error is inserted as sibling
+        const existingError = container.parentElement.querySelector('.image-upload-error');
         if (existingError) {
             existingError.remove();
         }

@@ -76,15 +76,48 @@ class OllamaAPI {
             });
             
             if (response.data && response.data.models) {
-                const models = response.data.models.map(model => ({
-                    id: model.name,
-                    name: model.name,
-                    size: model.size,
-                    modified_at: model.modified_at
-                }));
+                // Fetch detailed info for each model to check families
+                const modelsWithVisionInfo = await Promise.all(
+                    response.data.models.map(async (model) => {
+                        try {
+                            // Call /api/show to get model details including families
+                            const detailResponse = await axios.post(`${this.baseURL}/api/show`, {
+                                name: model.name
+                            }, { timeout: 3000 });
+                            
+                            const families = detailResponse.data.details?.families || [];
+                            const visionFamilies = ['llava', 'bakllava', 'minicpm-v'];
+                            const supportsVision = families.some(family => 
+                                visionFamilies.includes(family.toLowerCase())
+                            );
+                            
+                            return {
+                                id: model.name,
+                                name: model.name,
+                                size: model.size,
+                                modified_at: model.modified_at,
+                                supportsVision
+                            };
+                        } catch (error) {
+                            // If /api/show fails, fall back to name-based detection
+                            console.warn(`Could not fetch details for ${model.name}, using name-based detection`);
+                            const modelLower = model.name.toLowerCase();
+                            const visionKeywords = ['llava', 'bakllava', 'minicpm-v', 'vision'];
+                            const supportsVision = visionKeywords.some(keyword => modelLower.includes(keyword));
+                            
+                            return {
+                                id: model.name,
+                                name: model.name,
+                                size: model.size,
+                                modified_at: model.modified_at,
+                                supportsVision
+                            };
+                        }
+                    })
+                );
                 
-                console.log(`Loaded ${models.length} Ollama models`);
-                return models;
+                console.log(`Loaded ${modelsWithVisionInfo.length} Ollama models`);
+                return modelsWithVisionInfo;
             }
             
             return [];

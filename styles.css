@@ -2323,3 +2323,82 @@ body {
         height: 75px;
     }
 }
+
+/* Vision Model Indicators & Filtering */
+
+/* Vision badge in dropdown */
+.vision-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: #10b981;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 12px;
+    text-transform: uppercase;
+}
+
+/* Dropdown item name wrapper */
+.dropdown-item-name {
+    flex: 1;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Vision filter checkbox container */
+.vision-filter-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.vision-filter-container input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+.vision-filter-container label {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Vision filter inside dropdown */
+.dropdown-vision-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.dropdown-vision-filter input[type="checkbox"] {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+}
+
+.dropdown-vision-filter label {
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+}
+
+/* Dropdown separator */
+.dropdown-separator {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 4px 0;
+}
