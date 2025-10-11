@@ -54,8 +54,8 @@ class OpenRouterAPI {
     /**
      * Send a chat completion request
      * @param {string} modelId - Model ID
-     * @param {Array} messages - Array of message objects {role, content}
-     * @param {object} options - Additional options (temperature, max_tokens, etc.)
+     * @param {Array} messages - Array of message objects {role, content} or {role, content: [{type, text/image_url}]}
+     * @param {object} options - Additional options (temperature, max_tokens, images, etc.)
      * @returns {Promise<object>} Response with content, generationId, and usage
      */
     async sendMessage(modelId, messages, options = {}) {
@@ -66,9 +66,12 @@ class OpenRouterAPI {
         try {
             console.log(`Calling OpenRouter: ${modelId}`);
             
+            // Transform messages to support multimodal content if images are provided
+            const transformedMessages = this._transformMessagesWithImages(messages, options.images);
+            
             const payload = {
                 model: modelId,
-                messages: messages,
+                messages: transformedMessages,
                 temperature: options.temperature || 0.7,
                 max_tokens: options.max_tokens || 1000,
                 stream: false
@@ -120,6 +123,49 @@ class OpenRouterAPI {
             
             throw new Error(errorMessage);
         }
+    }
+
+    /**
+     * Transform messages to include images in multimodal format
+     * @param {Array} messages - Original messages
+     * @param {Array} images - Array of image data URLs (optional)
+     * @returns {Array} Transformed messages
+     * @private
+     */
+    _transformMessagesWithImages(messages, images) {
+        if (!images || images.length === 0) {
+            return messages;
+        }
+
+        // Transform messages to multimodal format
+        return messages.map((message, index) => {
+            // Only add images to the last user message
+            if (message.role === 'user' && index === messages.length - 1) {
+                const contentArray = [
+                    {
+                        type: 'text',
+                        text: message.content
+                    }
+                ];
+
+                // Add all images
+                images.forEach(imageUrl => {
+                    contentArray.push({
+                        type: 'image_url',
+                        image_url: {
+                            url: imageUrl
+                        }
+                    });
+                });
+
+                return {
+                    role: message.role,
+                    content: contentArray
+                };
+            }
+
+            return message;
+        });
     }
 
     /**

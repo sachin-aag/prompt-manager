@@ -1,6 +1,7 @@
 // UIController - Handles all DOM interactions and UI updates
 const SearchableDropdown = require('./components/SearchableDropdown');
 const { formatCost, formatCategoryName, escapeHtml } = require('./utils/formatting');
+const { fileToBase64, validateImageFile, isVisionModel } = require('./utils/imageUtils');
 
 class UIController {
     constructor(app) {
@@ -13,6 +14,10 @@ class UIController {
         this.currentEditingPromptId = null;
         this.currentEditingUserPromptId = null;
         this.currentSessionId = null;
+        
+        // Image handling
+        this.chatImages = [];
+        this.comparisonImages = [];
     }
 
     /**
@@ -174,15 +179,32 @@ class UIController {
         document.getElementById('edit-system-prompt-btn')?.addEventListener('click', () => this.openSystemPromptEditor());
         document.getElementById('save-system-prompt')?.addEventListener('click', () => this.saveSystemPrompt());
         document.getElementById('internet-access-select')?.addEventListener('change', (e) => this.onInternetAccessChanged(e.target.value));
+        
+        // Image upload listeners for comparison
+        document.getElementById('comparison-image-upload-btn')?.addEventListener('click', () => {
+            document.getElementById('comparison-image-upload')?.click();
+        });
+        document.getElementById('comparison-image-upload')?.addEventListener('change', (e) => {
+            this.handleComparisonImageUpload(e);
+        });
     }
 
     setupChatListeners() {
         document.getElementById('chat-send-btn')?.addEventListener('click', () => this.sendChatMessage());
+        document.getElementById('clear-chat-btn')?.addEventListener('click', () => this.clearChat());
         document.getElementById('chat-message-input')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.sendChatMessage();
             }
+        });
+        
+        // Image upload listeners for chat
+        document.getElementById('chat-image-upload-btn')?.addEventListener('click', () => {
+            document.getElementById('chat-image-upload')?.click();
+        });
+        document.getElementById('chat-image-upload')?.addEventListener('change', (e) => {
+            this.handleChatImageUpload(e);
         });
     }
 
@@ -492,6 +514,19 @@ class UIController {
             return;
         }
 
+        // Check if any selected model doesn't support vision when images are present
+        if (this.comparisonImages.length > 0) {
+            const nonVisionModels = selectedModels.filter(model => !isVisionModel(model.id, 'openrouter'));
+            
+            if (nonVisionModels.length > 0) {
+                const modelNames = nonVisionModels.map(m => m.name).join(', ');
+                this.showImageError('comparison',
+                    `⚠️ The following selected model(s) do not support image inputs: ${modelNames}. Please select vision-capable models (e.g., GPT-4 Vision, Claude 3, Gemini) or remove the images to continue.`
+                );
+                return;
+            }
+        }
+
         // Set internet provider
         const internetProvider = document.getElementById('internet-access-select')?.value || 'none';
         this.app.comparisonManager.setInternetProvider(internetProvider);
@@ -501,7 +536,8 @@ class UIController {
             selectedModels,
             systemPrompt,
             userMessage,
-            (slot, status, data) => this.onComparisonProgress(slot, status, data)
+            (slot, status, data) => this.onComparisonProgress(slot, status, data),
+            this.comparisonImages
         );
 
         // Wait and fetch cost data
@@ -518,8 +554,16 @@ class UIController {
         }));
 
         if (responses.length > 0) {
-            await this.app.promptSessionManager.create(systemPrompt, userMessage, responses);
+            await this.app.promptSessionManager.create(
+                systemPrompt, 
+                userMessage, 
+                responses, 
+                this.comparisonImages
+            );
         }
+        
+        // Clear images after successful comparison
+        this.clearComparisonImages();
     }
 
     /**
@@ -585,6 +629,19 @@ class UIController {
 
         if (!message) return;
 
+        // Check if model supports vision when images are present
+        if (this.chatImages.length > 0) {
+            const modelId = this.app.chatManager.selectedModel?.id;
+            const provider = this.app.chatManager.provider;
+            
+            if (!isVisionModel(modelId, provider)) {
+                this.showImageError('chat', 
+                    `⚠️ The selected model "${this.app.chatManager.selectedModel?.name}" does not support image inputs. Please select a vision-capable model (e.g., GPT-4 Vision, Claude 3, Gemini, LLaVA) or remove the images to continue.`
+                );
+                return;
+            }
+        }
+
         const systemPrompt = this.app.systemPromptManager.get(this.app.chatManager.systemPromptCategory);
 
         // Add user message to UI
@@ -595,12 +652,108 @@ class UIController {
         const loadingEl = this.addChatLoadingMessage();
 
         try {
-            const response = await this.app.chatManager.sendMessage(message, systemPrompt);
+            const response = await this.app.chatManager.sendMessage(message, systemPrompt, this.chatImages);
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', response.content, response.usage);
+            
+            // Save chat result to prompt history (My Prompts section)
+            await this.saveChatToPromptHistory(message, systemPrompt, response);
+            
+            // Clear images after successful send
+            this.clearChatImages();
         } catch (error) {
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', `Error: ${error.message}`, null, true);
+        }
+    }
+
+    /**
+     * Clear chat history
+     */
+    clearChat() {
+        // Clear chat manager history
+        this.app.chatManager.clearHistory();
+        
+        // Clear UI
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = `
+            <div class="chat-welcome">
+                <i class="fas fa-robot"></i>
+                <h3>Welcome to Simple Chat</h3>
+                <p>Select a model and start chatting!</p>
+            </div>
+        `;
+        
+        // Clear any uploaded images
+        this.clearChatImages();
+        
+        console.log('Chat cleared');
+    }
+
+    /**
+     * Save chat result to prompt history
+     * @param {string} userMessage - User message
+     * @param {string} systemPrompt - System prompt
+     * @param {object} response - Chat response with content and usage
+     */
+    async saveChatToPromptHistory(userMessage, systemPrompt, response) {
+        try {
+            const modelName = this.app.chatManager.selectedModel?.name || 'Unknown Model';
+            const chatHistory = this.app.chatManager.getHistory();
+            const sessionId = this.app.chatManager.getCurrentSessionId();
+            
+            // Build a comprehensive view of the conversation
+            // Format: "User: message\nAssistant: response\nUser: message2\n..."
+            let conversationText = '';
+            for (const msg of chatHistory) {
+                conversationText += `User: ${msg.user}\n\nAssistant: ${msg.assistant}\n\n`;
+            }
+            conversationText = conversationText.trim();
+            
+            // Create responses array with all exchanges
+            const responses = chatHistory.map(msg => ({
+                model: msg.model,
+                content: msg.assistant,
+                cost: msg.cost || {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    totalTokens: 0,
+                    totalCost: 0
+                }
+            }));
+            
+            // Collect images from the first message that had images (usually only the first message has them)
+            const sessionImages = [];
+            for (const msg of chatHistory) {
+                if (msg.images && msg.images.length > 0) {
+                    sessionImages.push(...msg.images);
+                    break; // Only get images from first message with images
+                }
+            }
+            
+            if (sessionId) {
+                // Update existing session
+                await this.app.promptSessionManager.update(
+                    sessionId,
+                    systemPrompt,
+                    conversationText,
+                    responses,
+                    sessionImages
+                );
+                console.log('Chat session updated in prompt history');
+            } else {
+                // Create new session
+                const session = await this.app.promptSessionManager.create(
+                    systemPrompt,
+                    conversationText,
+                    responses,
+                    sessionImages
+                );
+                this.app.chatManager.setCurrentSessionId(session.id);
+                console.log('New chat session created in prompt history');
+            }
+        } catch (error) {
+            console.error('Error saving chat to prompt history:', error);
         }
     }
 
@@ -830,13 +983,29 @@ class UIController {
         container.innerHTML = sessions.map(session => {
             const date = new Date(session.timestamp).toLocaleDateString();
             const time = new Date(session.timestamp).toLocaleTimeString();
-            const preview = session.userPrompt.substring(0, 100) + (session.userPrompt.length > 100 ? '...' : '');
+            
+            // Check if this is a chat conversation
+            const isChatConversation = session.userPrompt.includes('User:') && session.userPrompt.includes('Assistant:');
+            let preview;
+            let title;
+            
+            if (isChatConversation) {
+                // Extract first user message for preview
+                const firstUserMatch = session.userPrompt.match(/User:\s*(.+?)(?=\n\nAssistant:|$)/s);
+                const firstMessage = firstUserMatch ? firstUserMatch[1].trim() : session.userPrompt;
+                preview = firstMessage.substring(0, 100) + (firstMessage.length > 100 ? '...' : '');
+                title = `💬 Chat: ${preview}`;
+            } else {
+                preview = session.userPrompt.substring(0, 100) + (session.userPrompt.length > 100 ? '...' : '');
+                title = preview;
+            }
+            
             const modelsText = session.models.join(', ');
             
             return `
                 <div class="prompt-history-item" data-session-id="${session.id}">
                     <div class="prompt-history-item-header">
-                        <h4 class="prompt-history-title">${escapeHtml(preview)}</h4>
+                        <h4 class="prompt-history-title">${escapeHtml(title)}</h4>
                         <div class="prompt-history-meta">
                             <div class="prompt-history-date">${date} ${time}</div>
                             <div class="prompt-history-models">${modelsText}</div>
@@ -898,20 +1067,76 @@ class UIController {
         document.getElementById('session-date').textContent = new Date(session.timestamp).toLocaleString();
         document.getElementById('session-models').textContent = session.models.join(', ');
         document.getElementById('session-system-prompt').textContent = session.systemPrompt;
-        document.getElementById('session-user-prompt').textContent = session.userPrompt;
-
-        // Render responses
-        const responsesContainer = document.getElementById('session-responses');
-        if (responsesContainer && session.responses) {
-            responsesContainer.innerHTML = session.responses.map(response => `
-                <div class="response-item">
-                    <div class="response-header">
-                        <span class="response-model">${response.model}</span>
-                        <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+        
+        // Check if this is a chat conversation (userPrompt contains "User:" and "Assistant:")
+        const isChatConversation = session.userPrompt.includes('User:') && session.userPrompt.includes('Assistant:');
+        
+        // Display images if present (on the right side)
+        let imagesHtml = '';
+        if (session.images && session.images.length > 0) {
+            imagesHtml = '<div class="session-images-right">';
+            session.images.forEach((img, index) => {
+                imagesHtml += `<img src="${img}" alt="Image ${index + 1}" class="session-image" />`;
+            });
+            imagesHtml += '</div>';
+        }
+        
+        if (isChatConversation) {
+            // Display as a conversation with images at the top right
+            let conversationHtml = '';
+            if (imagesHtml) {
+                conversationHtml += '<div class="session-user-section">' + imagesHtml + '</div>';
+            }
+            conversationHtml += this.formatChatConversation(session.userPrompt);
+            document.getElementById('session-user-prompt').innerHTML = conversationHtml;
+            
+            // For chat conversations, show total cost summary
+            const responsesContainer = document.getElementById('session-responses');
+            if (responsesContainer && session.responses) {
+                const totalCost = session.responses.reduce((sum, r) => sum + (r.cost?.totalCost || 0), 0);
+                const totalTokens = session.responses.reduce((sum, r) => sum + (r.cost?.totalTokens || 0), 0);
+                
+                responsesContainer.innerHTML = `
+                    <div class="chat-summary">
+                        <div class="chat-summary-item">
+                            <strong>Total Messages:</strong> ${session.responses.length}
+                        </div>
+                        <div class="chat-summary-item">
+                            <strong>Total Tokens:</strong> ${totalTokens.toLocaleString()}
+                        </div>
+                        <div class="chat-summary-item">
+                            <strong>Total Cost:</strong> $${totalCost.toFixed(4)}
+                        </div>
                     </div>
-                    <div class="response-content">${escapeHtml(response.content)}</div>
-                </div>
-            `).join('');
+                `;
+            }
+        } else {
+            // Display as traditional prompt/response with images on the right
+            if (imagesHtml) {
+                let userPromptHtml = '<div class="session-content-wrapper">';
+                userPromptHtml += '<div class="session-user-section">';
+                userPromptHtml += imagesHtml;
+                userPromptHtml += `<div class="session-user-prompt-right">${escapeHtml(session.userPrompt)}</div>`;
+                userPromptHtml += '</div>';
+                userPromptHtml += '</div>';
+                document.getElementById('session-user-prompt').innerHTML = userPromptHtml;
+            } else {
+                document.getElementById('session-user-prompt').textContent = session.userPrompt;
+            }
+            
+            // Render responses
+            const responsesContainer = document.getElementById('session-responses');
+            if (responsesContainer && session.responses) {
+                responsesContainer.innerHTML = session.responses.map(response => `
+                    <div class="response-item">
+                        <div class="response-header">
+                            <span class="response-model">${response.model}</span>
+                            <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+                        </div>
+                        <div class="response-content">${escapeHtml(response.content)}</div>
+                    </div>
+                `).join('');
+            }
         }
 
         // Store current session ID for deletion
@@ -919,6 +1144,49 @@ class UIController {
 
         // Show modal
         document.getElementById('prompt-session-modal').style.display = 'flex';
+    }
+
+    /**
+     * Format chat conversation for display
+     * @param {string} conversationText - Conversation text with "User:" and "Assistant:" markers
+     * @returns {string} HTML formatted conversation
+     */
+    formatChatConversation(conversationText) {
+        const lines = conversationText.split('\n');
+        let html = '<div class="chat-conversation">';
+        let currentRole = null;
+        let currentContent = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (line.startsWith('User:')) {
+                // Save previous message if exists
+                if (currentRole && currentContent) {
+                    html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+                }
+                currentRole = 'user';
+                currentContent = line.substring(5).trim();
+            } else if (line.startsWith('Assistant:')) {
+                // Save previous message if exists
+                if (currentRole && currentContent) {
+                    html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+                }
+                currentRole = 'assistant';
+                currentContent = line.substring(10).trim();
+            } else if (line) {
+                // Continue current message
+                currentContent += '\n' + line;
+            }
+        }
+        
+        // Save last message
+        if (currentRole && currentContent) {
+            html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+        }
+        
+        html += '</div>';
+        return html;
     }
 
     /**
@@ -1026,6 +1294,202 @@ class UIController {
 
         html += '</tbody></table>';
         container.innerHTML = html;
+    }
+
+    /**
+     * Handle chat image upload
+     */
+    async handleChatImageUpload(event) {
+        const files = Array.from(event.target.files || []);
+        
+        for (const file of files) {
+            const validation = validateImageFile(file);
+            
+            if (!validation.valid) {
+                this.showImageError('chat', validation.error);
+                continue;
+            }
+            
+            try {
+                const base64 = await fileToBase64(file);
+                this.chatImages.push(base64);
+                this.renderChatImagePreviews();
+            } catch (error) {
+                this.showImageError('chat', `Failed to process ${file.name}: ${error.message}`);
+            }
+        }
+        
+        // Reset file input
+        event.target.value = '';
+    }
+
+    /**
+     * Handle comparison image upload
+     */
+    async handleComparisonImageUpload(event) {
+        const files = Array.from(event.target.files || []);
+        
+        for (const file of files) {
+            const validation = validateImageFile(file);
+            
+            if (!validation.valid) {
+                this.showImageError('comparison', validation.error);
+                continue;
+            }
+            
+            try {
+                const base64 = await fileToBase64(file);
+                this.comparisonImages.push(base64);
+                this.renderComparisonImagePreviews();
+            } catch (error) {
+                this.showImageError('comparison', `Failed to process ${file.name}: ${error.message}`);
+            }
+        }
+        
+        // Reset file input
+        event.target.value = '';
+    }
+
+    /**
+     * Render chat image previews
+     */
+    renderChatImagePreviews() {
+        const container = document.getElementById('chat-image-previews');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        this.chatImages.forEach((image, index) => {
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'image-preview-item';
+            
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `Image ${index + 1}`;
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'image-preview-remove';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+            removeBtn.title = 'Remove image';
+            removeBtn.onclick = () => this.removeChatImage(index);
+            
+            const fileName = document.createElement('div');
+            fileName.className = 'image-preview-name';
+            fileName.textContent = `Image ${index + 1}`;
+            
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(removeBtn);
+            previewDiv.appendChild(fileName);
+            
+            container.appendChild(previewDiv);
+        });
+    }
+
+    /**
+     * Render comparison image previews
+     */
+    renderComparisonImagePreviews() {
+        const container = document.getElementById('comparison-image-previews');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        this.comparisonImages.forEach((image, index) => {
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'image-preview-item';
+            
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `Image ${index + 1}`;
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'image-preview-remove';
+            removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+            removeBtn.title = 'Remove image';
+            removeBtn.onclick = () => this.removeComparisonImage(index);
+            
+            const fileName = document.createElement('div');
+            fileName.className = 'image-preview-name';
+            fileName.textContent = `Image ${index + 1}`;
+            
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(removeBtn);
+            previewDiv.appendChild(fileName);
+            
+            container.appendChild(previewDiv);
+        });
+    }
+
+    /**
+     * Remove chat image
+     */
+    removeChatImage(index) {
+        this.chatImages.splice(index, 1);
+        this.renderChatImagePreviews();
+        this.hideImageError('chat');
+    }
+
+    /**
+     * Remove comparison image
+     */
+    removeComparisonImage(index) {
+        this.comparisonImages.splice(index, 1);
+        this.renderComparisonImagePreviews();
+        this.hideImageError('comparison');
+    }
+
+    /**
+     * Clear all chat images
+     */
+    clearChatImages() {
+        this.chatImages = [];
+        this.renderChatImagePreviews();
+        this.hideImageError('chat');
+    }
+
+    /**
+     * Clear all comparison images
+     */
+    clearComparisonImages() {
+        this.comparisonImages = [];
+        this.renderComparisonImagePreviews();
+        this.hideImageError('comparison');
+    }
+
+    /**
+     * Show image error message
+     */
+    showImageError(context, message) {
+        const containerId = context === 'chat' ? 'chat-image-previews' : 'comparison-image-previews';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Remove existing error
+        const existingError = container.querySelector('.image-upload-error');
+        if (existingError) {
+            existingError.remove();
+        }
+        
+        // Add new error
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'image-upload-error';
+        errorDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i><span>${escapeHtml(message)}</span>`;
+        
+        container.parentElement.insertBefore(errorDiv, container.nextSibling);
+    }
+
+    /**
+     * Hide image error message
+     */
+    hideImageError(context) {
+        const containerId = context === 'chat' ? 'chat-image-previews' : 'comparison-image-previews';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        const error = container.parentElement.querySelector('.image-upload-error');
+        if (error) {
+            error.remove();
+        }
     }
 }
 

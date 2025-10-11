@@ -20,9 +20,10 @@ class ComparisonManager {
      * @param {string} systemPrompt - System prompt
      * @param {string} userMessage - User message
      * @param {Function} onProgress - Progress callback
+     * @param {Array} images - Array of image data URLs (optional)
      * @returns {Promise<Array>} Results array
      */
-    async runComparison(models, systemPrompt, userMessage, onProgress) {
+    async runComparison(models, systemPrompt, userMessage, onProgress, images = []) {
         const results = [];
         
         // Fetch internet context if using Tavily
@@ -50,7 +51,7 @@ class ComparisonManager {
                     { role: 'user', content: finalMessage }
                 ];
                 
-                const response = await this.openRouterAPI.sendMessage(modelId, messages);
+                const response = await this.openRouterAPI.sendMessage(modelId, messages, { images });
                 
                 // Store generation ID for cost lookup
                 if (response.generationId) {

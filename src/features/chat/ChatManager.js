@@ -13,6 +13,7 @@ class ChatManager {
         this.provider = 'openrouter'; // 'openrouter' or 'ollama'
         this.internetProvider = 'none'; // 'none', 'tavily', 'openrouter'
         this.systemPromptCategory = 'writing';
+        this.currentSessionId = null; // Track current chat session for history
     }
 
     setSelectedModel(model) {
@@ -35,9 +36,10 @@ class ChatManager {
      * Send a chat message
      * @param {string} message - User message
      * @param {string} systemPrompt - System prompt
+     * @param {Array} images - Array of image data URLs (optional)
      * @returns {Promise<object>} Response with content and cost
      */
-    async sendMessage(message, systemPrompt) {
+    async sendMessage(message, systemPrompt, images = []) {
         if (!message || !this.selectedModel) {
             throw new Error('Message and model required');
         }
@@ -59,16 +61,19 @@ class ChatManager {
             finalMessage = message; // Don't add Tavily context
         }
         
+        // Build messages array with chat history for context
+        const messages = this._buildMessagesWithContext(systemPrompt, finalMessage);
+        
         // Call the appropriate API based on provider
         let response;
         if (this.provider === 'ollama') {
-            response = await this.ollamaAPI.sendMessage(this.selectedModel.id, systemPrompt, finalMessage);
+            response = await this.ollamaAPI.sendChatMessage(
+                this.selectedModel.id, 
+                messages,
+                { images }
+            );
         } else {
-            const messages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: finalMessage }
-            ];
-            const result = await this.openRouterAPI.sendMessage(modelId, messages);
+            const result = await this.openRouterAPI.sendMessage(modelId, messages, { images });
             response = {
                 content: result.content,
                 usage: result.usage
@@ -81,10 +86,38 @@ class ChatManager {
             assistant: response.content,
             model: this.selectedModel.name,
             cost: response.usage,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            hasImages: images.length > 0
         });
         
         return response;
+    }
+
+    /**
+     * Build messages array including chat history for context
+     * @param {string} systemPrompt - System prompt
+     * @param {string} currentMessage - Current user message
+     * @returns {Array} Messages array with context
+     * @private
+     */
+    _buildMessagesWithContext(systemPrompt, currentMessage) {
+        const messages = [];
+        
+        // Add system prompt
+        if (systemPrompt) {
+            messages.push({ role: 'system', content: systemPrompt });
+        }
+        
+        // Add chat history
+        for (const msg of this.messages) {
+            messages.push({ role: 'user', content: msg.user });
+            messages.push({ role: 'assistant', content: msg.assistant });
+        }
+        
+        // Add current message
+        messages.push({ role: 'user', content: currentMessage });
+        
+        return messages;
     }
 
     /**
@@ -107,6 +140,7 @@ class ChatManager {
      */
     clearHistory() {
         this.messages = [];
+        this.currentSessionId = null; // Reset session when clearing chat
     }
 
     /**
@@ -115,6 +149,22 @@ class ChatManager {
      */
     getHistory() {
         return this.messages;
+    }
+
+    /**
+     * Get current session ID
+     * @returns {string|null} Current session ID
+     */
+    getCurrentSessionId() {
+        return this.currentSessionId;
+    }
+
+    /**
+     * Set current session ID
+     * @param {string} sessionId - Session ID
+     */
+    setCurrentSessionId(sessionId) {
+        this.currentSessionId = sessionId;
     }
 }
 
