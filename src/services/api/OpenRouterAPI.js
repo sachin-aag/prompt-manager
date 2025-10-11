@@ -43,7 +43,8 @@ class OpenRouterAPI {
                 description: model.description,
                 context_length: model.context_length,
                 pricing: model.pricing,
-                top_provider: model.top_provider
+                top_provider: model.top_provider,
+                supportsVision: model.architecture?.input_modalities?.includes('image') || false
             }));
         } catch (error) {
             console.error('Error fetching models:', error);
