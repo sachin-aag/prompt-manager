@@ -191,6 +191,7 @@ class UIController {
 
     setupChatListeners() {
         document.getElementById('chat-send-btn')?.addEventListener('click', () => this.sendChatMessage());
+        document.getElementById('clear-chat-btn')?.addEventListener('click', () => this.clearChat());
         document.getElementById('chat-message-input')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -650,11 +651,93 @@ class UIController {
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', response.content, response.usage);
             
+            // Save chat result to prompt history (My Prompts section)
+            await this.saveChatToPromptHistory(message, systemPrompt, response);
+            
             // Clear images after successful send
             this.clearChatImages();
         } catch (error) {
             this.removeChatLoadingMessage(loadingEl);
             this.addChatMessage('assistant', `Error: ${error.message}`, null, true);
+        }
+    }
+
+    /**
+     * Clear chat history
+     */
+    clearChat() {
+        // Clear chat manager history
+        this.app.chatManager.clearHistory();
+        
+        // Clear UI
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = `
+            <div class="chat-welcome">
+                <i class="fas fa-robot"></i>
+                <h3>Welcome to Simple Chat</h3>
+                <p>Select a model and start chatting!</p>
+            </div>
+        `;
+        
+        // Clear any uploaded images
+        this.clearChatImages();
+        
+        console.log('Chat cleared');
+    }
+
+    /**
+     * Save chat result to prompt history
+     * @param {string} userMessage - User message
+     * @param {string} systemPrompt - System prompt
+     * @param {object} response - Chat response with content and usage
+     */
+    async saveChatToPromptHistory(userMessage, systemPrompt, response) {
+        try {
+            const modelName = this.app.chatManager.selectedModel?.name || 'Unknown Model';
+            const chatHistory = this.app.chatManager.getHistory();
+            const sessionId = this.app.chatManager.getCurrentSessionId();
+            
+            // Build a comprehensive view of the conversation
+            // Format: "User: message\nAssistant: response\nUser: message2\n..."
+            let conversationText = '';
+            for (const msg of chatHistory) {
+                conversationText += `User: ${msg.user}\n\nAssistant: ${msg.assistant}\n\n`;
+            }
+            conversationText = conversationText.trim();
+            
+            // Create responses array with all exchanges
+            const responses = chatHistory.map(msg => ({
+                model: msg.model,
+                content: msg.assistant,
+                cost: msg.cost || {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    totalTokens: 0,
+                    totalCost: 0
+                }
+            }));
+            
+            if (sessionId) {
+                // Update existing session
+                await this.app.promptSessionManager.update(
+                    sessionId,
+                    systemPrompt,
+                    conversationText,
+                    responses
+                );
+                console.log('Chat session updated in prompt history');
+            } else {
+                // Create new session
+                const session = await this.app.promptSessionManager.create(
+                    systemPrompt,
+                    conversationText,
+                    responses
+                );
+                this.app.chatManager.setCurrentSessionId(session.id);
+                console.log('New chat session created in prompt history');
+            }
+        } catch (error) {
+            console.error('Error saving chat to prompt history:', error);
         }
     }
 
@@ -884,13 +967,29 @@ class UIController {
         container.innerHTML = sessions.map(session => {
             const date = new Date(session.timestamp).toLocaleDateString();
             const time = new Date(session.timestamp).toLocaleTimeString();
-            const preview = session.userPrompt.substring(0, 100) + (session.userPrompt.length > 100 ? '...' : '');
+            
+            // Check if this is a chat conversation
+            const isChatConversation = session.userPrompt.includes('User:') && session.userPrompt.includes('Assistant:');
+            let preview;
+            let title;
+            
+            if (isChatConversation) {
+                // Extract first user message for preview
+                const firstUserMatch = session.userPrompt.match(/User:\s*(.+?)(?=\n\nAssistant:|$)/s);
+                const firstMessage = firstUserMatch ? firstUserMatch[1].trim() : session.userPrompt;
+                preview = firstMessage.substring(0, 100) + (firstMessage.length > 100 ? '...' : '');
+                title = `💬 Chat: ${preview}`;
+            } else {
+                preview = session.userPrompt.substring(0, 100) + (session.userPrompt.length > 100 ? '...' : '');
+                title = preview;
+            }
+            
             const modelsText = session.models.join(', ');
             
             return `
                 <div class="prompt-history-item" data-session-id="${session.id}">
                     <div class="prompt-history-item-header">
-                        <h4 class="prompt-history-title">${escapeHtml(preview)}</h4>
+                        <h4 class="prompt-history-title">${escapeHtml(title)}</h4>
                         <div class="prompt-history-meta">
                             <div class="prompt-history-date">${date} ${time}</div>
                             <div class="prompt-history-models">${modelsText}</div>
@@ -952,20 +1051,51 @@ class UIController {
         document.getElementById('session-date').textContent = new Date(session.timestamp).toLocaleString();
         document.getElementById('session-models').textContent = session.models.join(', ');
         document.getElementById('session-system-prompt').textContent = session.systemPrompt;
-        document.getElementById('session-user-prompt').textContent = session.userPrompt;
-
-        // Render responses
-        const responsesContainer = document.getElementById('session-responses');
-        if (responsesContainer && session.responses) {
-            responsesContainer.innerHTML = session.responses.map(response => `
-                <div class="response-item">
-                    <div class="response-header">
-                        <span class="response-model">${response.model}</span>
-                        <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+        
+        // Check if this is a chat conversation (userPrompt contains "User:" and "Assistant:")
+        const isChatConversation = session.userPrompt.includes('User:') && session.userPrompt.includes('Assistant:');
+        
+        if (isChatConversation) {
+            // Display as a conversation
+            document.getElementById('session-user-prompt').innerHTML = this.formatChatConversation(session.userPrompt);
+            
+            // For chat conversations, show total cost summary
+            const responsesContainer = document.getElementById('session-responses');
+            if (responsesContainer && session.responses) {
+                const totalCost = session.responses.reduce((sum, r) => sum + (r.cost?.totalCost || 0), 0);
+                const totalTokens = session.responses.reduce((sum, r) => sum + (r.cost?.totalTokens || 0), 0);
+                
+                responsesContainer.innerHTML = `
+                    <div class="chat-summary">
+                        <div class="chat-summary-item">
+                            <strong>Total Messages:</strong> ${session.responses.length}
+                        </div>
+                        <div class="chat-summary-item">
+                            <strong>Total Tokens:</strong> ${totalTokens.toLocaleString()}
+                        </div>
+                        <div class="chat-summary-item">
+                            <strong>Total Cost:</strong> $${totalCost.toFixed(4)}
+                        </div>
                     </div>
-                    <div class="response-content">${escapeHtml(response.content)}</div>
-                </div>
-            `).join('');
+                `;
+            }
+        } else {
+            // Display as traditional prompt/response
+            document.getElementById('session-user-prompt').textContent = session.userPrompt;
+            
+            // Render responses
+            const responsesContainer = document.getElementById('session-responses');
+            if (responsesContainer && session.responses) {
+                responsesContainer.innerHTML = session.responses.map(response => `
+                    <div class="response-item">
+                        <div class="response-header">
+                            <span class="response-model">${response.model}</span>
+                            <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+                        </div>
+                        <div class="response-content">${escapeHtml(response.content)}</div>
+                    </div>
+                `).join('');
+            }
         }
 
         // Store current session ID for deletion
@@ -973,6 +1103,49 @@ class UIController {
 
         // Show modal
         document.getElementById('prompt-session-modal').style.display = 'flex';
+    }
+
+    /**
+     * Format chat conversation for display
+     * @param {string} conversationText - Conversation text with "User:" and "Assistant:" markers
+     * @returns {string} HTML formatted conversation
+     */
+    formatChatConversation(conversationText) {
+        const lines = conversationText.split('\n');
+        let html = '<div class="chat-conversation">';
+        let currentRole = null;
+        let currentContent = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (line.startsWith('User:')) {
+                // Save previous message if exists
+                if (currentRole && currentContent) {
+                    html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+                }
+                currentRole = 'user';
+                currentContent = line.substring(5).trim();
+            } else if (line.startsWith('Assistant:')) {
+                // Save previous message if exists
+                if (currentRole && currentContent) {
+                    html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+                }
+                currentRole = 'assistant';
+                currentContent = line.substring(10).trim();
+            } else if (line) {
+                // Continue current message
+                currentContent += '\n' + line;
+            }
+        }
+        
+        // Save last message
+        if (currentRole && currentContent) {
+            html += `<div class="chat-turn ${currentRole}">${escapeHtml(currentContent.trim())}</div>`;
+        }
+        
+        html += '</div>';
+        return html;
     }
 
     /**

@@ -58,6 +58,32 @@ class PromptSessionManager {
     }
 
     /**
+     * Update an existing session
+     * @param {string} id - Session ID
+     * @param {string} systemPrompt - System prompt used
+     * @param {string} userPrompt - User prompt (can be updated to reflect full conversation)
+     * @param {Array} responses - Model responses
+     * @returns {object|null} Updated session or null if not found
+     */
+    async update(id, systemPrompt, userPrompt, responses) {
+        const sessionIndex = this.sessions.findIndex(s => s.id === id);
+        if (sessionIndex === -1) return null;
+        
+        const updatedSession = {
+            ...this.sessions[sessionIndex],
+            systemPrompt,
+            userPrompt,
+            responses,
+            models: responses.map(r => r.model),
+            timestamp: this.sessions[sessionIndex].timestamp // Keep original timestamp
+        };
+        
+        await this.storageService.savePromptSession(updatedSession);
+        this.sessions[sessionIndex] = updatedSession;
+        return updatedSession;
+    }
+
+    /**
      * Delete a session
      * @param {string} id - Session ID
      * @returns {boolean} True if deleted

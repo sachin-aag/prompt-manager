@@ -13,6 +13,7 @@ class ChatManager {
         this.provider = 'openrouter'; // 'openrouter' or 'ollama'
         this.internetProvider = 'none'; // 'none', 'tavily', 'openrouter'
         this.systemPromptCategory = 'writing';
+        this.currentSessionId = null; // Track current chat session for history
     }
 
     setSelectedModel(model) {
@@ -139,6 +140,7 @@ class ChatManager {
      */
     clearHistory() {
         this.messages = [];
+        this.currentSessionId = null; // Reset session when clearing chat
     }
 
     /**
@@ -147,6 +149,22 @@ class ChatManager {
      */
     getHistory() {
         return this.messages;
+    }
+
+    /**
+     * Get current session ID
+     * @returns {string|null} Current session ID
+     */
+    getCurrentSessionId() {
+        return this.currentSessionId;
+    }
+
+    /**
+     * Set current session ID
+     * @param {string} sessionId - Session ID
+     */
+    setCurrentSessionId(sessionId) {
+        this.currentSessionId = sessionId;
     }
 }
 
