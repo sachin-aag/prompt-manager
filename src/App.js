@@ -53,13 +53,23 @@ class App {
             this.openRouterAPI,
             this.ollamaAPI,
             this.tavilyAPI,
-            this.storage
+            this.storage,
+            {
+                perplexityAPI: this.perplexityAPI,
+                braveAPI: this.braveAPI,
+                exaAPI: this.exaAPI
+            }
         );
         
         this.comparisonManager = new ComparisonManager(
             this.openRouterAPI,
             this.tavilyAPI,
-            this.costCalculator
+            this.costCalculator,
+            {
+                perplexityAPI: this.perplexityAPI,
+                braveAPI: this.braveAPI,
+                exaAPI: this.exaAPI
+            }
         );
         
         this.systemPromptManager = new SystemPromptManager(this.storage);

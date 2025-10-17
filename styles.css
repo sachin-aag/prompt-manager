@@ -137,6 +137,11 @@ body {
     display: flex;
 }
 
+/* Enable scrolling in My Prompts tab */
+#prompts-tab {
+    overflow-y: auto;
+}
+
 .content-header {
     padding: 24px 32px;
     background: white;
@@ -2070,9 +2075,12 @@ body {
 }
 
 .result-url-cell {
-    min-width: 200px;
-    max-width: 350px;
+    min-width: 140px;
+    max-width: 240px;
     font-size: 13px;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
 }
 
 .result-url-cell a {

@@ -38,7 +38,10 @@ const CONFIG = {
     INTERNET_PROVIDERS: {
         NONE: 'none',
         TAVILY: 'tavily',
-        OPENROUTER: 'openrouter'
+        OPENROUTER: 'openrouter',
+        PERPLEXITY: 'perplexity',
+        BRAVE: 'brave',
+        EXA: 'exa'
     }
 };
 

@@ -2,10 +2,13 @@
 const { formatCost } = require('../../utils/formatting');
 
 class ComparisonManager {
-    constructor(openRouterAPI, tavilyAPI, costCalculator) {
+    constructor(openRouterAPI, tavilyAPI, costCalculator, providers = {}) {
         this.openRouterAPI = openRouterAPI;
         this.tavilyAPI = tavilyAPI;
         this.costCalculator = costCalculator;
+        this.perplexityAPI = providers.perplexityAPI;
+        this.braveAPI = providers.braveAPI;
+        this.exaAPI = providers.exaAPI;
         
         this.internetProvider = 'none'; // 'none', 'tavily', 'openrouter'
     }
@@ -26,10 +29,10 @@ class ComparisonManager {
     async runComparison(models, systemPrompt, userMessage, onProgress, images = []) {
         const results = [];
         
-        // Fetch internet context if using Tavily
+        // Fetch internet context based on selected provider
         let internetContext = '';
-        if (this.internetProvider === 'tavily') {
-            internetContext = await this.tavilyAPI.getContext(userMessage);
+        if (['tavily', 'perplexity', 'brave', 'exa'].includes(this.internetProvider)) {
+            internetContext = await this.fetchInternetContext(userMessage);
         }
         
         // Run comparisons in parallel
@@ -93,6 +96,27 @@ class ComparisonManager {
         });
         
         return await Promise.all(promises);
+    }
+
+    async fetchInternetContext(query) {
+        try {
+            if (this.internetProvider === 'tavily' && this.tavilyAPI) {
+                return await this.tavilyAPI.getContext(query);
+            }
+            if (this.internetProvider === 'perplexity' && this.perplexityAPI) {
+                return await this.perplexityAPI.getContext(query);
+            }
+            if (this.internetProvider === 'brave' && this.braveAPI) {
+                return await this.braveAPI.getContext(query);
+            }
+            if (this.internetProvider === 'exa' && this.exaAPI) {
+                return await this.exaAPI.getContext(query);
+            }
+            return '';
+        } catch (error) {
+            console.error('Error fetching internet context:', error);
+            return '';
+        }
     }
 
     /**

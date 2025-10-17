@@ -2,11 +2,14 @@
 const { formatCost } = require('../../utils/formatting');
 
 class ChatManager {
-    constructor(openRouterAPI, ollamaAPI, tavilyAPI, storageService) {
+    constructor(openRouterAPI, ollamaAPI, tavilyAPI, storageService, providers = {}) {
         this.openRouterAPI = openRouterAPI;
         this.ollamaAPI = ollamaAPI;
         this.tavilyAPI = tavilyAPI;
         this.storageService = storageService;
+        this.perplexityAPI = providers.perplexityAPI;
+        this.braveAPI = providers.braveAPI;
+        this.exaAPI = providers.exaAPI;
         
         this.messages = [];
         this.selectedModel = null;
@@ -47,12 +50,10 @@ class ChatManager {
         let modelId = this.selectedModel.id;
         let finalMessage = message;
         
-        // Fetch internet context if using Tavily
-        if (this.internetProvider === 'tavily') {
-            const context = await this.fetchTavilyContext(message);
-            if (context) {
-                finalMessage = message + context;
-            }
+        // Fetch internet context for selected provider
+        if (['tavily', 'perplexity', 'brave', 'exa'].includes(this.internetProvider)) {
+            const context = await this.fetchInternetContext(message);
+            if (context) finalMessage = message + context;
         }
         
         // Handle OpenRouter web search
@@ -125,12 +126,23 @@ class ChatManager {
      * @param {string} query - Search query
      * @returns {Promise<string>} Formatted context
      */
-    async fetchTavilyContext(query) {
+    async fetchInternetContext(query) {
         try {
-            const context = await this.tavilyAPI.getContext(query);
-            return context;
+            if (this.internetProvider === 'tavily' && this.tavilyAPI) {
+                return await this.tavilyAPI.getContext(query);
+            }
+            if (this.internetProvider === 'perplexity' && this.perplexityAPI) {
+                return await this.perplexityAPI.getContext(query);
+            }
+            if (this.internetProvider === 'brave' && this.braveAPI) {
+                return await this.braveAPI.getContext(query);
+            }
+            if (this.internetProvider === 'exa' && this.exaAPI) {
+                return await this.exaAPI.getContext(query);
+            }
+            return '';
         } catch (error) {
-            console.error('Error fetching Tavily context:', error);
+            console.error('Error fetching internet context:', error);
             return '';
         }
     }

@@ -127,7 +127,10 @@ class UIController {
         this.chatInternetDropdown.setOptions([
             { id: 'none', name: 'None' },
             { id: 'tavily', name: 'Tavily (External)' },
-            { id: 'openrouter', name: 'OpenRouter (Built-in)' }
+            { id: 'openrouter', name: 'OpenRouter (Built-in)' },
+            { id: 'perplexity', name: 'Perplexity (External)' },
+            { id: 'brave', name: 'Brave (External)' },
+            { id: 'exa', name: 'Exa (External)' }
         ]);
         this.chatInternetDropdown.setValue('none');
         this.chatInternetDropdown.onChange = (option) => {
@@ -1266,7 +1269,19 @@ class UIController {
         });
 
         const resultsContainer = document.getElementById('perplexity-results');
-        resultsContainer.innerHTML = '<div class="search-loading"><i class="fas fa-spinner"></i><p>Searching...</p></div>';
+        const resultsSection = document.getElementById('perplexity-results-section');
+
+        // If no providers selected, show a friendly message
+        if (providers.length === 0) {
+            if (resultsSection) resultsSection.style.display = 'block';
+            if (resultsContainer) resultsContainer.innerHTML = '<div class="search-error">Please select at least one provider.</div>';
+            return;
+        }
+
+        if (resultsContainer) {
+            resultsContainer.innerHTML = '<div class="search-loading"><i class="fas fa-spinner"></i><p>Searching...</p></div>';
+        }
+        if (resultsSection) resultsSection.style.display = 'block';
 
         try {
             const { results, warnings } = await this.app.searchComparisonManager.runComparison(
@@ -1277,7 +1292,10 @@ class UIController {
 
             this.displaySearchResults(results, warnings);
         } catch (error) {
-            resultsContainer.innerHTML = `<div class="search-error">Error: ${error.message}</div>`;
+            if (resultsContainer) {
+                resultsContainer.innerHTML = `<div class="search-error">Error: ${error.message}</div>`;
+            }
+            if (resultsSection) resultsSection.style.display = 'block';
         }
     }
 
@@ -1286,11 +1304,20 @@ class UIController {
      */
     displaySearchResults(results, warnings) {
         const container = document.getElementById('perplexity-results');
+        const resultsSection = document.getElementById('perplexity-results-section');
+        if (resultsSection) resultsSection.style.display = 'block';
+
         const normalized = this.app.searchComparisonManager.normalizeResults(results);
 
         let html = '';
         if (warnings.length > 0) {
             html += `<div class="search-warning">${warnings.join(', ')}</div>`;
+        }
+
+        if (!results || results.length === 0) {
+            html += '<div class="search-warning">No providers returned results.</div>';
+            container.innerHTML = html;
+            return;
         }
 
         html += '<table class="results-table"><thead><tr>';
@@ -1303,7 +1330,7 @@ class UIController {
         normalized.forEach(item => {
             html += '<tr>';
             html += `<td>${escapeHtml(item.title)}</td>`;
-            html += `<td><a href="${item.url}" target="_blank">${item.url}</a></td>`;
+            html += `<td class="result-url-cell"><a href="${item.url}" target="_blank">${item.url}</a></td>`;
             results.forEach(r => {
                 const rank = item[r.provider];
                 html += `<td>${rank || '—'}</td>`;

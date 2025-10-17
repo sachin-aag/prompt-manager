@@ -55,6 +55,26 @@ class PerplexityAPI {
             return { provider: 'perplexity', results: [] };
         }
     }
+
+    /**
+     * Get context for internet-enhanced prompts
+     * @param {string} query - Search query
+     * @returns {Promise<string>} Formatted context string
+     */
+    async getContext(query) {
+        try {
+            const response = await this.search(query, { max_results: 5 });
+            const items = response.results || [];
+            if (items.length === 0) return '';
+            const contextParts = items.map((result, i) =>
+                `[Source ${i + 1}]: ${result.title}\n${result.snippet}`
+            );
+            return `\n\n--- Internet Search Context ---\n${contextParts.join('\n\n')}\n--- End of Context ---`;
+        } catch (error) {
+            console.error('Error fetching Perplexity context:', error);
+            return '';
+        }
+    }
 }
 
 module.exports = PerplexityAPI;
