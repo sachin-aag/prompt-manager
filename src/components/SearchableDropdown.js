@@ -33,12 +33,31 @@ class SearchableDropdown {
         });
 
         this.searchInput.addEventListener('focus', () => {
-            this.open();
+            // Only open on focus if not already open (prevents reopening after arrow close)
+            if (!this.isOpen) {
+                this.open();
+            }
         });
 
         this.searchInput.addEventListener('keydown', (e) => {
             this.handleKeydown(e);
         });
+
+        // Arrow click toggles open/close
+        if (this.arrow) {
+            this.arrow.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.isOpen) {
+                    this.close();
+                    // Blur the input to prevent focus event from reopening
+                    this.searchInput && this.searchInput.blur();
+                } else {
+                    this.open();
+                    // Focus the input for accessibility and keyboard nav
+                    this.searchInput && this.searchInput.focus();
+                }
+            });
+        }
 
         // Click outside to close
         document.addEventListener('click', (e) => {

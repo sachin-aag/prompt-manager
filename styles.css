@@ -554,10 +554,12 @@ body {
     right: 16px;
     top: 50%;
     transform: translateY(-50%);
-    pointer-events: none;
+    pointer-events: auto;
     color: #6b7280;
     font-size: 14px;
     transition: transform 0.2s ease;
+    cursor: pointer;
+    padding: 4px;
 }
 
 .searchable-dropdown.open .dropdown-arrow {
