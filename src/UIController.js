@@ -43,6 +43,37 @@ class UIController {
                 this.switchTab(tab);
             });
         });
+        
+        // Setup sidebar toggle
+        this.setupSidebarToggle();
+    }
+    
+    /**
+     * Setup sidebar toggle functionality
+     */
+    setupSidebarToggle() {
+        const toggleBtn = document.getElementById('sidebar-toggle-btn');
+        const sidebar = document.querySelector('.sidebar');
+        
+        if (toggleBtn && sidebar) {
+            toggleBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+                
+                // Update button title
+                const isCollapsed = sidebar.classList.contains('collapsed');
+                toggleBtn.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+                
+                // Save state to localStorage
+                localStorage.setItem('sidebarCollapsed', isCollapsed);
+            });
+            
+            // Restore saved state
+            const savedState = localStorage.getItem('sidebarCollapsed');
+            if (savedState === 'true') {
+                sidebar.classList.add('collapsed');
+                toggleBtn.title = 'Expand sidebar';
+            }
+        }
     }
 
     /**
@@ -182,6 +213,15 @@ class UIController {
         document.getElementById('edit-system-prompt-btn')?.addEventListener('click', () => this.openSystemPromptEditor());
         document.getElementById('save-system-prompt')?.addEventListener('click', () => this.saveSystemPrompt());
         document.getElementById('internet-access-select')?.addEventListener('change', (e) => this.onInternetAccessChanged(e.target.value));
+        document.getElementById('toggle-prompt-expansion')?.addEventListener('click', () => this.toggleSystemPromptExpansion());
+        
+        // Enter key listener for comparison textarea
+        document.getElementById('user-message')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.runComparison();
+            }
+        });
         
         // Image upload listeners for comparison
         document.getElementById('comparison-image-upload-btn')?.addEventListener('click', () => {
@@ -436,6 +476,30 @@ class UIController {
         
         if (container) {
             container.textContent = content;
+            // Start with collapsed state
+            container.classList.add('collapsed');
+        }
+    }
+
+    /**
+     * Toggle system prompt expansion
+     */
+    toggleSystemPromptExpansion() {
+        const container = document.getElementById('system-prompt-content');
+        const button = document.getElementById('toggle-prompt-expansion');
+        
+        if (!container || !button) return;
+        
+        const isCollapsed = container.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            // Expand
+            container.classList.remove('collapsed');
+            button.innerHTML = '<i class="fas fa-chevron-up"></i> Show less';
+        } else {
+            // Collapse
+            container.classList.add('collapsed');
+            button.innerHTML = '<i class="fas fa-chevron-down"></i> Show more';
         }
     }
 
@@ -565,15 +629,17 @@ class UIController {
 
         // Wait and fetch cost data
         await new Promise(resolve => setTimeout(resolve, 10000));
+        const costDataMap = new Map(); // Store cost data by slot
         await this.app.comparisonManager.fetchCostData(results, (slot, costData) => {
             this.updateCostDisplay(slot, costData);
+            costDataMap.set(slot, costData); // Store for saving to session
         });
 
-        // Save session
+        // Save session with proper cost data
         const responses = results.filter(r => !r.error).map(r => ({
             model: r.model,
             content: r.content,
-            cost: r.usage
+            cost: costDataMap.get(r.slot) || r.usage // Use fetched cost data if available, fallback to usage
         }));
 
         if (responses.length > 0) {
@@ -1153,7 +1219,7 @@ class UIController {
                     <div class="response-item">
                         <div class="response-header">
                             <span class="response-model">${response.model}</span>
-                            <span class="response-cost">$${response.cost?.totalCost?.toFixed(4) || 'N/A'}</span>
+                            <span class="response-cost">${response.cost?.totalCost ? `$${response.cost.totalCost.toFixed(4)}` : 'N/A'}</span>
                         </div>
                         <div class="response-content">${escapeHtml(response.content)}</div>
                     </div>

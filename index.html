@@ -13,32 +13,35 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h1><i class="fas fa-robot"></i> Prompt Manager</h1>
+                <h1><i class="fas fa-robot"></i> <span class="sidebar-title">Prompt Manager</span></h1>
+                <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Collapse sidebar">
+                    <i class="fas fa-angle-left"></i>
+                </button>
             </div>
             
             <div class="sidebar-content">
                 <div class="nav-section">
-                    <button class="nav-btn active" data-tab="chat">
+                    <button class="nav-btn active" data-tab="chat" data-tooltip="Simple Chat">
                         <i class="fas fa-comments"></i>
                         <span>Simple Chat</span>
                     </button>
-                    <button class="nav-btn" data-tab="prompts">
+                    <button class="nav-btn" data-tab="prompts" data-tooltip="My Prompts">
                         <i class="fas fa-file-text"></i>
                         <span>My Prompts</span>
                     </button>
-                    <button class="nav-btn" data-tab="comparison">
+                    <button class="nav-btn" data-tab="comparison" data-tooltip="Compare LLMs">
                         <i class="fas fa-balance-scale"></i>
                         <span>Compare LLMs</span>
                     </button>
-                    <button class="nav-btn" data-tab="system-prompts">
+                    <button class="nav-btn" data-tab="system-prompts" data-tooltip="System Prompts">
                         <i class="fas fa-cogs"></i>
                         <span>System Prompts</span>
                     </button>
-                    <button class="nav-btn" data-tab="perplexity-search">
+                    <button class="nav-btn" data-tab="perplexity-search" data-tooltip="AI Search Comparison">
                         <i class="fas fa-search"></i>
                         <span>AI Search Comparison</span>
                     </button>
-                    <button class="nav-btn" data-tab="settings">
+                    <button class="nav-btn" data-tab="settings" data-tooltip="Settings">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </button>

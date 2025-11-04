@@ -67,6 +67,8 @@ class ChatManager {
         
         // Call the appropriate API based on provider
         let response;
+        let generationId = null;
+        
         if (this.provider === 'ollama') {
             response = await this.ollamaAPI.sendChatMessage(
                 this.selectedModel.id, 
@@ -75,21 +77,38 @@ class ChatManager {
             );
         } else {
             const result = await this.openRouterAPI.sendMessage(modelId, messages, { images });
+            generationId = result.generationId;
             response = {
                 content: result.content,
-                usage: result.usage
+                usage: result.usage,
+                generationId: generationId
             };
         }
         
-        // Store message
-        this.messages.push({
+        // Store message with initial usage data
+        const messageEntry = {
             user: message,
             assistant: response.content,
             model: this.selectedModel.name,
             cost: response.usage,
             timestamp: new Date().toISOString(),
-            hasImages: images.length > 0
-        });
+            hasImages: images.length > 0,
+            generationId: generationId
+        };
+        this.messages.push(messageEntry);
+        
+        // Fetch detailed cost data for OpenRouter after a delay
+        if (generationId && this.provider === 'openrouter') {
+            setTimeout(async () => {
+                try {
+                    const costData = await this.openRouterAPI.fetchCostData(generationId);
+                    // Update the message cost with detailed data
+                    messageEntry.cost = costData;
+                } catch (error) {
+                    console.error('Error fetching cost data for chat message:', error);
+                }
+            }, 10000); // 10 second delay to allow cost data to be available
+        }
         
         return response;
     }
