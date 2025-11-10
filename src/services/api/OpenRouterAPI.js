@@ -127,7 +127,7 @@ class OpenRouterAPI {
                 
                 // Check if we should retry
                 const isTimeout = error.code === 'ECONNABORTED';
-                const isNetworkError = error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND';
+                const isNetworkError = error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED';
                 const is5xxError = error.response?.status >= 500 && error.response?.status < 600;
                 const shouldRetry = (isTimeout || isNetworkError || is5xxError) && attempt < maxRetries;
                 
