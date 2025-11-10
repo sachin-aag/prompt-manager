@@ -53,7 +53,7 @@ class OpenRouterAPI {
     }
 
     /**
-     * Send a chat completion request
+     * Send a chat completion request with automatic retry on timeout
      * @param {string} modelId - Model ID
      * @param {Array} messages - Array of message objects {role, content} or {role, content: [{type, text/image_url}]}
      * @param {object} options - Additional options (temperature, max_tokens, images, etc.)
@@ -64,66 +64,109 @@ class OpenRouterAPI {
             throw new Error('API key not configured');
         }
 
-        try {
-            console.log(`Calling OpenRouter: ${modelId}`);
-            
-            // Transform messages to support multimodal content if images are provided
-            const transformedMessages = this._transformMessagesWithImages(messages, options.images);
-            
-            const payload = {
-                model: modelId,
-                messages: transformedMessages,
-                temperature: options.temperature || 0.7,
-                max_tokens: options.max_tokens || 1000,
-                stream: false
-            };
-            
-            const startTime = Date.now();
-            const response = await axios.post(`${this.baseURL}/chat/completions`, payload, {
-                headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: this.timeout
-            });
+        const maxRetries = CONFIG.MAX_RETRIES || 2;
+        let lastError = null;
 
-            const endTime = Date.now();
-            const latency = endTime - startTime;
-            
-            const content = response.data.choices[0].message.content;
-            const generationId = response.data.id;
-            
-            // Extract usage data if available
-            let usage = null;
-            if (response.data.usage) {
-                usage = {
-                    inputTokens: response.data.usage.prompt_tokens || 0,
-                    outputTokens: response.data.usage.completion_tokens || 0,
-                    totalTokens: response.data.usage.total_tokens || 0
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    const delay = CONFIG.RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+                    console.log(`Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+                    await this._sleep(delay);
+                }
+
+                console.log(`Calling OpenRouter: ${modelId} (attempt ${attempt + 1}/${maxRetries + 1})`);
+                
+                // Transform messages to support multimodal content if images are provided
+                const transformedMessages = this._transformMessagesWithImages(messages, options.images);
+                
+                const payload = {
+                    model: modelId,
+                    messages: transformedMessages,
+                    temperature: options.temperature || 0.7,
+                    max_tokens: options.max_tokens || 8000,
+                    stream: false
                 };
+                
+                const startTime = Date.now();
+                const response = await axios.post(`${this.baseURL}/chat/completions`, payload, {
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: this.timeout
+                });
+
+                const endTime = Date.now();
+                const latency = endTime - startTime;
+                
+                const content = response.data.choices[0].message.content;
+                const generationId = response.data.id;
+                
+                // Extract usage data if available
+                let usage = null;
+                if (response.data.usage) {
+                    usage = {
+                        inputTokens: response.data.usage.prompt_tokens || 0,
+                        outputTokens: response.data.usage.completion_tokens || 0,
+                        totalTokens: response.data.usage.total_tokens || 0
+                    };
+                }
+                
+                console.log(`✓ OpenRouter request succeeded (${latency}ms)`);
+                
+                return {
+                    content,
+                    generationId,
+                    usage,
+                    latency,
+                    finishReason: response.data.choices[0].finish_reason
+                };
+            } catch (error) {
+                lastError = error;
+                
+                // Check if we should retry
+                const isTimeout = error.code === 'ECONNABORTED';
+                const isNetworkError = error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND';
+                const is5xxError = error.response?.status >= 500 && error.response?.status < 600;
+                const shouldRetry = (isTimeout || isNetworkError || is5xxError) && attempt < maxRetries;
+                
+                if (shouldRetry) {
+                    console.warn(`Request failed (${error.code || error.message}), will retry...`);
+                    continue;
+                }
+                
+                // No more retries, throw the error
+                console.error(`Error calling OpenRouter (final):`, error);
+                break;
             }
-            
-            return {
-                content,
-                generationId,
-                usage,
-                latency,
-                finishReason: response.data.choices[0].finish_reason
-            };
-        } catch (error) {
-            console.error(`Error calling OpenRouter:`, error);
-            
-            let errorMessage = 'Unknown error occurred';
-            if (error.code === 'ECONNABORTED') {
-                errorMessage = 'Request timeout - the model took too long to respond';
-            } else if (error.response?.data?.error?.message) {
-                errorMessage = error.response.data.error.message;
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-            
-            throw new Error(errorMessage);
         }
+
+        // All retries failed, format and throw the error
+        let errorMessage = 'Unknown error occurred';
+        if (lastError.code === 'ECONNABORTED') {
+            errorMessage = `Request timeout - The model took too long to respond (>${this.timeout/1000}s). Try: 1) Using a faster model, 2) Reducing max tokens, 3) Checking your internet connection`;
+        } else if (lastError.response?.status === 429) {
+            errorMessage = 'Rate limit exceeded - Please wait a moment and try again';
+        } else if (lastError.response?.status === 503) {
+            errorMessage = 'Service temporarily unavailable - The model may be overloaded, try again in a moment';
+        } else if (lastError.response?.data?.error?.message) {
+            errorMessage = lastError.response.data.error.message;
+        } else if (lastError.message) {
+            errorMessage = lastError.message;
+        }
+        
+        throw new Error(errorMessage);
+    }
+
+    /**
+     * Sleep utility for retry delays
+     * @param {number} ms - Milliseconds to sleep
+     * @returns {Promise}
+     * @private
+     */
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
