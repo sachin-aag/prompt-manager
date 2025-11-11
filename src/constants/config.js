@@ -10,8 +10,12 @@ const CONFIG = {
     EXA_SEARCH_URL: 'https://api.exa.ai/search',
     
     // API Timeouts (in milliseconds)
-    DEFAULT_TIMEOUT: 30000,
+    DEFAULT_TIMEOUT: 120000, // 2 minutes for complex LLM requests
     OLLAMA_TIMEOUT: 60000,
+    
+    // Retry configuration
+    MAX_RETRIES: 2,
+    RETRY_DELAY: 1000, // Initial retry delay in ms
     
     // Model comparison slots
     COMPARISON_SLOTS: 4,

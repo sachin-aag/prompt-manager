@@ -152,49 +152,101 @@ class OllamaAPI {
     }
 
     /**
-     * Send a chat message with full conversation history using chat API
+     * Send a chat message with full conversation history using chat API (with retry logic)
      * @param {string} modelId - Model name
      * @param {Array} messages - Array of message objects {role, content}
      * @param {object} options - Additional options (temperature, max_tokens, images)
      * @returns {Promise<object>} Response with content and cost info
      */
     async sendChatMessage(modelId, messages, options = {}) {
-        try {
-            // Transform messages to include images in the last user message if provided
-            const transformedMessages = this._transformMessagesWithImages(messages, options.images);
-            
-            const response = await axios.post(`${this.baseURL}/api/chat`, {
-                model: modelId,
-                messages: transformedMessages,
-                stream: false,
-                options: {
-                    temperature: options.temperature || 0.7,
-                    num_predict: options.max_tokens || 1000
-                }
-            }, {
-                timeout: this.timeout
-            });
+        const maxRetries = CONFIG.MAX_RETRIES || 2;
+        let lastError = null;
 
-            const content = response.data.message.content;
-            
-            // Estimate tokens for cost calculation
-            const fullPrompt = messages.map(m => m.content).join('\n');
-            const estimatedInputTokens = estimateTokens(fullPrompt);
-            const estimatedOutputTokens = estimateTokens(content);
-            
-            return {
-                content,
-                usage: {
-                    inputTokens: estimatedInputTokens,
-                    outputTokens: estimatedOutputTokens,
-                    totalTokens: estimatedInputTokens + estimatedOutputTokens,
-                    totalCost: 0 // Local models are free
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    const delay = CONFIG.RETRY_DELAY * Math.pow(2, attempt - 1);
+                    console.log(`Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+                    await this._sleep(delay);
                 }
-            };
-        } catch (error) {
-            console.error('Error calling Ollama chat API:', error);
-            throw error;
+
+                console.log(`Calling Ollama: ${modelId} (attempt ${attempt + 1}/${maxRetries + 1})`);
+                
+                // Transform messages to include images in the last user message if provided
+                const transformedMessages = this._transformMessagesWithImages(messages, options.images);
+                
+                const startTime = Date.now();
+                const response = await axios.post(`${this.baseURL}/api/chat`, {
+                    model: modelId,
+                    messages: transformedMessages,
+                    stream: false,
+                    options: {
+                        temperature: options.temperature || 0.7,
+                        num_predict: options.max_tokens || 8000
+                    }
+                }, {
+                    timeout: this.timeout
+                });
+
+                const endTime = Date.now();
+                const latency = endTime - startTime;
+                const content = response.data.message.content;
+                
+                // Estimate tokens for cost calculation
+                const fullPrompt = messages.map(m => m.content).join('\n');
+                const estimatedInputTokens = estimateTokens(fullPrompt);
+                const estimatedOutputTokens = estimateTokens(content);
+                
+                console.log(`✓ Ollama request succeeded (${latency}ms)`);
+                
+                return {
+                    content,
+                    usage: {
+                        inputTokens: estimatedInputTokens,
+                        outputTokens: estimatedOutputTokens,
+                        totalTokens: estimatedInputTokens + estimatedOutputTokens,
+                        totalCost: 0 // Local models are free
+                    }
+                };
+            } catch (error) {
+                lastError = error;
+                
+                // Check if we should retry
+                const isTimeout = error.code === 'ECONNABORTED';
+                const isNetworkError = error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED';
+                const shouldRetry = (isTimeout || isNetworkError) && attempt < maxRetries;
+                
+                if (shouldRetry) {
+                    console.warn(`Ollama request failed (${error.code || error.message}), will retry...`);
+                    continue;
+                }
+                
+                console.error('Error calling Ollama chat API (final):', error);
+                break;
+            }
         }
+
+        // All retries failed, format and throw the error
+        let errorMessage = 'Unknown error occurred';
+        if (lastError.code === 'ECONNABORTED') {
+            errorMessage = `Request timeout - Ollama took too long to respond (>${this.timeout/1000}s). The model may be too large or your system may be under load.`;
+        } else if (lastError.code === 'ECONNREFUSED') {
+            errorMessage = 'Cannot connect to Ollama - Please ensure Ollama is running';
+        } else if (lastError.message) {
+            errorMessage = lastError.message;
+        }
+        
+        throw new Error(errorMessage);
+    }
+
+    /**
+     * Sleep utility for retry delays
+     * @param {number} ms - Milliseconds to sleep
+     * @returns {Promise}
+     * @private
+     */
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
@@ -244,7 +296,7 @@ class OllamaAPI {
             stream: false,
             options: {
                 temperature: options.temperature || 0.7,
-                num_predict: options.max_tokens || 1000
+                num_predict: options.max_tokens || 8000
             }
         }, {
             timeout: this.timeout
@@ -301,7 +353,7 @@ class OllamaAPI {
             stream: false,
             options: {
                 temperature: options.temperature || 0.7,
-                num_predict: options.max_tokens || 1000
+                num_predict: options.max_tokens || 8000
             }
         }, {
             timeout: this.timeout
